@@ -1,9 +1,13 @@
 import { endSession, saveConfig } from '../actions'
-import { kw } from '../dsl'
+import { parseIpv4 } from '../../model/ipv4'
+import { ping, traceroute } from '../../sim/ping'
+import { ipv4, word } from '../args'
+import { arg, kw } from '../dsl'
+import { iosPingOutput, iosTracerouteOutput } from '../render/ping'
 import { isConfigModified, showRunningConfig, showStartupConfig } from '../render/config'
 import { showInterfaces, showIpInterfaceBrief } from '../render/interfaces'
 import { showVersion } from '../render/version'
-import type { CmdNode } from '../types'
+import type { CmdNode, Handler } from '../types'
 import { interfaceNodes } from './shared'
 
 function showNodes(privileged: boolean): CmdNode {
@@ -40,6 +44,37 @@ function showNodes(privileged: boolean): CmdNode {
   return kw('show', 'Show running system information', { children })
 }
 
+const unknownHost: Handler = (ctx, args) =>
+  ctx.out(
+    `Translating "${String(args.host)}"...domain server (255.255.255.255)`,
+    '% Unrecognized host or address, or protocol not running.',
+    '',
+  )
+
+const pingNode = kw('ping', 'Send echo messages', {
+  children: [
+    arg('ip', ipv4(), 'Ping destination address or hostname', {
+      run: (ctx, args) => {
+        const target = String(args.ip)
+        ctx.out(...iosPingOutput(target, ping(ctx.project, ctx.device.id, parseIpv4(target)!, 5)))
+      },
+    }),
+    arg('host', word(), 'Ping destination address or hostname', { run: unknownHost }),
+  ],
+})
+
+const tracerouteNode = kw('traceroute', 'Trace route to destination', {
+  children: [
+    arg('ip', ipv4(), 'Trace route to destination address or hostname', {
+      run: (ctx, args) => {
+        const target = String(args.ip)
+        ctx.out(...iosTracerouteOutput(target, traceroute(ctx.project, ctx.device.id, parseIpv4(target)!, 3)))
+      },
+    }),
+    arg('host', word(), 'Trace route to destination address or hostname', { run: unknownHost }),
+  ],
+})
+
 const exitNode = kw('exit', 'Exit from the EXEC', { run: endSession })
 const logoutNode = kw('logout', 'Exit from the EXEC', { run: endSession })
 
@@ -55,7 +90,9 @@ export const userNodes: CmdNode[] = [
   }),
   exitNode,
   logoutNode,
+  pingNode,
   showNodes(false),
+  tracerouteNode,
 ]
 
 export const privNodes: CmdNode[] = [
@@ -99,6 +136,8 @@ export const privNodes: CmdNode[] = [
   }),
   exitNode,
   logoutNode,
+  pingNode,
   showNodes(true),
+  tracerouteNode,
 ]
 

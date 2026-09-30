@@ -19,9 +19,11 @@ import { ConfirmSheet } from '../components/ConfirmSheet'
 import { TextPrompt } from '../components/TextPrompt'
 import { flushAutosave } from '../persistence/autosave'
 import { useCliStore } from '../store/cliStore'
+import { usePcStore } from '../store/pcStore'
 import { useProjectStore } from '../store/projectStore'
 import { useUiStore } from '../store/uiStore'
 import { DeviceCli } from './DeviceCli'
+import { PcScreen } from './PcScreen'
 
 const btn = 'rounded-lg px-3 py-2.5 text-sm font-medium'
 const primary = `${btn} bg-sky-600 text-white hover:bg-sky-500 active:bg-sky-700`
@@ -104,6 +106,8 @@ function Sheets({ project }: { project: Project }) {
   const device = selection?.kind === 'device' ? project.devices[selection.id] : undefined
   const openCli = useCliStore((s) => s.open)
   const forgetCli = useCliStore((s) => s.forget)
+  const openPc = usePcStore((s) => s.open)
+  const forgetPc = usePcStore((s) => s.forget)
   const menuItem = 'rounded-lg bg-slate-700 py-3 hover:bg-slate-600'
 
   return (
@@ -113,18 +117,17 @@ function Sheets({ project }: { project: Project }) {
       {sheet === 'device-menu' && device && (
         <BottomSheet title={device.label} onClose={close}>
           <div className="flex flex-col gap-2">
-            {isIosDevice(device) && (
-              <button
-                type="button"
-                className={menuItem}
-                onClick={() => {
-                  close()
-                  openCli(device.id)
-                }}
-              >
-                Open CLI
-              </button>
-            )}
+            <button
+              type="button"
+              className={menuItem}
+              onClick={() => {
+                close()
+                if (isIosDevice(device)) openCli(device.id)
+                else openPc(device.id)
+              }}
+            >
+              {isIosDevice(device) ? 'Open CLI' : 'Open'}
+            </button>
             <button type="button" className={menuItem} onClick={() => openSheet('rename')}>Rename</button>
             <button type="button" className="rounded-lg bg-red-600/90 py-3 text-white hover:bg-red-500" onClick={() => openSheet('delete')}>
               Delete
@@ -162,6 +165,7 @@ function Sheets({ project }: { project: Project }) {
             onConfirm={() => {
               apply((p) => removeDevice(p, device.id))
               forgetCli(device.id)
+              forgetPc(device.id)
               select(null)
             }}
           />
@@ -191,11 +195,13 @@ export function Workspace({ project }: { project: Project }) {
   const close = useProjectStore((s) => s.close)
   const reset = useUiStore((s) => s.reset)
   const resetCli = useCliStore((s) => s.reset)
+  const resetPc = usePcStore((s) => s.reset)
 
   async function back() {
     await flushAutosave()
     reset()
     resetCli()
+    resetPc()
     close()
   }
 
@@ -218,6 +224,7 @@ export function Workspace({ project }: { project: Project }) {
       </div>
       <Sheets project={project} />
       <DeviceCli project={project} />
+      <PcScreen project={project} />
     </ReactFlowProvider>
   )
 }

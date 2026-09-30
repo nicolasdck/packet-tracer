@@ -7,8 +7,9 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import { useMemo, useState } from 'react'
-import { isIosDevice, moveDevice, shortIfName, type Project } from '../../engine'
+import { interfaceStatus, isIosDevice, moveDevice, shortIfName, type Project } from '../../engine'
 import { useCliStore } from '../store/cliStore'
+import { usePcStore } from '../store/pcStore'
 import { useProjectStore } from '../store/projectStore'
 import { useUiStore } from '../store/uiStore'
 import { DeviceNode, type DeviceNodeType } from './DeviceNode'
@@ -32,6 +33,7 @@ function buildEdges(project: Project, selectedLinkId: string | null): LinkEdgeTy
     // Offsets are defined relative to the sorted pair so reversed links fan out consistently.
     const sign = l.a.deviceId <= l.b.deviceId ? 1 : -1
     const offset = (group.indexOf(l.id) - (group.length - 1) / 2) * PARALLEL_SPACING * sign
+    const isUp = (e: typeof l.a) => interfaceStatus(project, e.deviceId, e.port).protocol === 'up'
     return {
       id: l.id,
       type: 'link',
@@ -41,6 +43,8 @@ function buildEdges(project: Project, selectedLinkId: string | null): LinkEdgeTy
         sourcePort: shortIfName(l.a.port),
         targetPort: shortIfName(l.b.port),
         offset,
+        sourceUp: isUp(l.a),
+        targetUp: isUp(l.b),
         selected: l.id === selectedLinkId,
       },
     }
@@ -54,6 +58,7 @@ export function Canvas({ project }: { project: Project }) {
   const select = useUiStore((s) => s.select)
   const pickLinkDevice = useUiStore((s) => s.pickLinkDevice)
   const openCli = useCliStore((s) => s.open)
+  const openPc = usePcStore((s) => s.open)
 
   // React Flow owns measurements and in-flight drag positions; the project stores the rest.
   const [measured, setMeasured] = useState<Record<string, Dimensions>>({})
@@ -122,7 +127,9 @@ export function Canvas({ project }: { project: Project }) {
         if (linkDraft) return pickLinkDevice(node.id)
         select({ kind: 'device', id: node.id })
         const device = project.devices[node.id]
-        if (device && isIosDevice(device)) openCli(node.id)
+        if (!device) return
+        if (isIosDevice(device)) openCli(node.id)
+        else openPc(node.id)
       }}
       onEdgeClick={(_, edge) => {
         if (!linkDraft) select({ kind: 'link', id: edge.id })

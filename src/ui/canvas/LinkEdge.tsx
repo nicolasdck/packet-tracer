@@ -4,6 +4,9 @@ import { ANCHOR } from './geometry'
 export type LinkEdgeData = {
   sourcePort: string
   targetPort: string
+  /** Line protocol of each end is up. */
+  sourceUp: boolean
+  targetUp: boolean
   /** Perpendicular offset in px, to separate parallel links. */
   offset: number
   selected: boolean
@@ -11,7 +14,12 @@ export type LinkEdgeData = {
 
 export type LinkEdgeType = Edge<LinkEdgeData, 'link'>
 
-const LABEL_DISTANCE = 52
+const UP = '#22c55e'
+const DOWN = '#ef4444'
+const SELECTED = '#38bdf8'
+/** Distance from the icon center: status dots just outside the icon, labels further out. */
+const DOT_DISTANCE = 32
+const LABEL_DISTANCE = 56
 
 function PortLabel({ x, y, text }: { x: number; y: number; text: string }) {
   return (
@@ -45,7 +53,10 @@ export function LinkEdge({ id, source, target, data }: EdgeProps<LinkEdgeType>) 
   const sy = sy0 + oy
   const tx = tx0 + ox
   const ty = ty0 + oy
-  const d = Math.min(LABEL_DISTANCE, len * 0.4)
+  const dot = Math.min(DOT_DISTANCE, len * 0.3)
+  const label = Math.min(LABEL_DISTANCE, len * 0.42)
+  const up = data.sourceUp && data.targetUp
+  const stroke = data.selected ? SELECTED : up ? UP : DOWN
 
   return (
     <>
@@ -53,11 +64,13 @@ export function LinkEdge({ id, source, target, data }: EdgeProps<LinkEdgeType>) 
         id={id}
         path={`M ${sx} ${sy} L ${tx} ${ty}`}
         interactionWidth={24}
-        style={{ stroke: data.selected ? '#38bdf8' : '#94a3b8', strokeWidth: data.selected ? 3 : 2 }}
+        style={{ stroke, strokeWidth: data.selected ? 3 : 2 }}
       />
+      <circle cx={sx + ux * dot} cy={sy + uy * dot} r={4} fill={data.sourceUp ? UP : DOWN} stroke="#0f172a" strokeWidth={1.5} />
+      <circle cx={tx - ux * dot} cy={ty - uy * dot} r={4} fill={data.targetUp ? UP : DOWN} stroke="#0f172a" strokeWidth={1.5} />
       <EdgeLabelRenderer>
-        <PortLabel x={sx + ux * d} y={sy + uy * d} text={data.sourcePort} />
-        <PortLabel x={tx - ux * d} y={ty - uy * d} text={data.targetPort} />
+        <PortLabel x={sx + ux * label} y={sy + uy * label} text={data.sourcePort} />
+        <PortLabel x={tx - ux * label} y={ty - uy * label} text={data.targetPort} />
       </EdgeLabelRenderer>
     </>
   )
