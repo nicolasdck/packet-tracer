@@ -7,7 +7,8 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import { useMemo, useState } from 'react'
-import { moveDevice, shortIfName, type Project } from '../../engine'
+import { isIosDevice, moveDevice, shortIfName, type Project } from '../../engine'
+import { useCliStore } from '../store/cliStore'
 import { useProjectStore } from '../store/projectStore'
 import { useUiStore } from '../store/uiStore'
 import { DeviceNode, type DeviceNodeType } from './DeviceNode'
@@ -52,6 +53,7 @@ export function Canvas({ project }: { project: Project }) {
   const linkDraft = useUiStore((s) => s.linkDraft)
   const select = useUiStore((s) => s.select)
   const pickLinkDevice = useUiStore((s) => s.pickLinkDevice)
+  const openCli = useCliStore((s) => s.open)
 
   // React Flow owns measurements and in-flight drag positions; the project stores the rest.
   const [measured, setMeasured] = useState<Record<string, Dimensions>>({})
@@ -117,8 +119,10 @@ export function Canvas({ project }: { project: Project }) {
       edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       onNodeClick={(_, node) => {
-        if (linkDraft) pickLinkDevice(node.id)
-        else select({ kind: 'device', id: node.id })
+        if (linkDraft) return pickLinkDevice(node.id)
+        select({ kind: 'device', id: node.id })
+        const device = project.devices[node.id]
+        if (device && isIosDevice(device)) openCli(node.id)
       }}
       onEdgeClick={(_, edge) => {
         if (!linkDraft) select({ kind: 'link', id: edge.id })

@@ -74,8 +74,9 @@ export interface HostDevice extends DeviceBase {
 
 export interface IosConfig {
   hostname: string
+  /** Plain text, always displayed hashed (type 5). */
   enableSecret?: string
-  bannerMotd?: string
+  bannerMotd?: { delimiter: string; text: string }
   servicePasswordEncryption: boolean
   lines: { console: LineConfig; vty: LineConfig }
   interfaces: Record<IfName, IfConfig>
@@ -83,7 +84,8 @@ export interface IosConfig {
 }
 
 export interface LineConfig {
-  password?: string
+  /** Plain text. `encrypted`: shown as type 7 (set by service password-encryption, never reverted). */
+  password?: { value: string; encrypted: boolean }
   login: boolean
 }
 
@@ -97,7 +99,7 @@ export type Speed = 'auto' | 10 | 100 | 1000
 export interface IfConfig {
   shutdown: boolean
   description?: string
-  ip?: { address: string; mask: string }
+  ip?: { address: string; mask: string; method: 'manual' | 'NVRAM' }
   /** Ethernet only. */
   duplex?: Duplex
   speed?: Speed

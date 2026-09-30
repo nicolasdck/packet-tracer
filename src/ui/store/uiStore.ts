@@ -12,7 +12,7 @@ export interface LinkDraft {
   pickingFor: string | null
 }
 
-export type Sheet = 'palette' | 'rename' | 'delete' | null
+export type Sheet = 'palette' | 'device-menu' | 'rename' | 'delete' | null
 
 interface UiState {
   selection: Selection

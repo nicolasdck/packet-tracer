@@ -5,6 +5,7 @@ import {
   connect,
   deviceLinks,
   disconnect,
+  isIosDevice,
   removeDevice,
   renameDevice,
   shortIfName,
@@ -13,11 +14,14 @@ import {
 import { Canvas } from '../canvas/Canvas'
 import { Palette } from '../canvas/Palette'
 import { PortPicker } from '../canvas/PortPicker'
+import { BottomSheet } from '../components/BottomSheet'
 import { ConfirmSheet } from '../components/ConfirmSheet'
 import { TextPrompt } from '../components/TextPrompt'
 import { flushAutosave } from '../persistence/autosave'
+import { useCliStore } from '../store/cliStore'
 import { useProjectStore } from '../store/projectStore'
 import { useUiStore } from '../store/uiStore'
+import { DeviceCli } from './DeviceCli'
 
 const btn = 'rounded-lg px-3 py-2.5 text-sm font-medium'
 const primary = `${btn} bg-sky-600 text-white hover:bg-sky-500 active:bg-sky-700`
@@ -54,8 +58,7 @@ function Toolbar({ project }: { project: Project }) {
     return (
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-medium text-slate-100">{device.label}</span>
-        <button type="button" className={secondary} onClick={() => openSheet('rename')}>Rename</button>
-        <button type="button" className={danger} onClick={() => openSheet('delete')}>Delete</button>
+        <button type="button" className={secondary} onClick={() => openSheet('device-menu')} aria-label="Device actions">⋯</button>
         <button type="button" className={secondary} onClick={() => select(null)} aria-label="Deselect">✕</button>
       </div>
     )
@@ -99,10 +102,36 @@ function Sheets({ project }: { project: Project }) {
   const { selection, sheet, linkDraft, openSheet, select, setLinkStart, closePortPicker, cancelLink } = useUiStore()
   const close = () => openSheet(null)
   const device = selection?.kind === 'device' ? project.devices[selection.id] : undefined
+  const openCli = useCliStore((s) => s.open)
+  const forgetCli = useCliStore((s) => s.forget)
+  const menuItem = 'rounded-lg bg-slate-700 py-3 hover:bg-slate-600'
 
   return (
     <>
       {sheet === 'palette' && <Palette onClose={close} />}
+
+      {sheet === 'device-menu' && device && (
+        <BottomSheet title={device.label} onClose={close}>
+          <div className="flex flex-col gap-2">
+            {isIosDevice(device) && (
+              <button
+                type="button"
+                className={menuItem}
+                onClick={() => {
+                  close()
+                  openCli(device.id)
+                }}
+              >
+                Open CLI
+              </button>
+            )}
+            <button type="button" className={menuItem} onClick={() => openSheet('rename')}>Rename</button>
+            <button type="button" className="rounded-lg bg-red-600/90 py-3 text-white hover:bg-red-500" onClick={() => openSheet('delete')}>
+              Delete
+            </button>
+          </div>
+        </BottomSheet>
+      )}
 
       {sheet === 'rename' && device && (
         <TextPrompt
@@ -132,6 +161,7 @@ function Sheets({ project }: { project: Project }) {
             onClose={close}
             onConfirm={() => {
               apply((p) => removeDevice(p, device.id))
+              forgetCli(device.id)
               select(null)
             }}
           />
@@ -160,10 +190,12 @@ function Sheets({ project }: { project: Project }) {
 export function Workspace({ project }: { project: Project }) {
   const close = useProjectStore((s) => s.close)
   const reset = useUiStore((s) => s.reset)
+  const resetCli = useCliStore((s) => s.reset)
 
   async function back() {
     await flushAutosave()
     reset()
+    resetCli()
     close()
   }
 
@@ -185,6 +217,7 @@ export function Workspace({ project }: { project: Project }) {
         </footer>
       </div>
       <Sheets project={project} />
+      <DeviceCli project={project} />
     </ReactFlowProvider>
   )
 }

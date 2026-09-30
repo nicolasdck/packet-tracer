@@ -48,6 +48,8 @@ export function defaultIosConfig(kind: IosKind): IosConfig {
   const model = CATALOG[kind]
   const interfaces: Record<IfName, IfConfig> = {}
   for (const port of model.ports) interfaces[port] = defaultInterface(kind, port)
+  // Switches ship with the management SVI, shut down.
+  if (kind !== 'router') interfaces['Vlan1'] = { shutdown: true }
   return {
     hostname: model.defaultHostname ?? 'Router',
     servicePasswordEncryption: false,

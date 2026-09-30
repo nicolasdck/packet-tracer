@@ -18,3 +18,16 @@ export {
   disconnect,
 } from './project/topology'
 export type { PortInfo } from './project/topology'
+export { interfaceStatus } from './sim/linkState'
+export type { IfStatus } from './sim/linkState'
+export {
+  createSession,
+  openSession,
+  getPrompt,
+  executeLine,
+  ctrlZ,
+  cliHelp,
+  cliComplete,
+} from './cli/execute'
+export type { CliResult, Prompt } from './cli/execute'
+export type { CliSession, ModeId } from './cli/types'
