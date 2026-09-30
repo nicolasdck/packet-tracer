@@ -9,6 +9,8 @@ export const HOST_PROMPT = 'C:\\>'
 export interface HostResult {
   project: Project
   output: string[]
+  /** The screen must be cleared (cls / clear). */
+  clear?: boolean
 }
 
 function pingOutput(target: string, result: PingResult): string[] {
@@ -62,13 +64,15 @@ function ipconfigOutput(host: HostDevice): string[] {
   ]
 }
 
-/** Runs a command in the PC's command prompt: ping, tracert, ipconfig. */
+/** Runs a command in the PC's command prompt: ping, tracert, ipconfig, cls/clear. */
 export function runHostCommand(project: Project, deviceId: string, line: string): HostResult {
   const device = project.devices[deviceId]
   if (!device || !isHostDevice(device)) throw new Error(`Not a host: ${deviceId}`)
   const [command = '', target = '', ...extra] = line.trim().split(/\s+/)
   const cmd = command.toLowerCase()
   if (!cmd) return { project, output: [] }
+
+  if ((cmd === 'cls' || cmd === 'clear') && !target) return { project, output: [], clear: true }
 
   if (cmd === 'ipconfig' && !target) return { project, output: ipconfigOutput(device) }
 

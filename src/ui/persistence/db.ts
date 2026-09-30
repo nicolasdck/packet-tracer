@@ -1,5 +1,13 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { cloneProject, createProject, migrateProject, type Project } from '../../engine'
+import {
+  buildExport,
+  cloneProject,
+  createProject,
+  migrateProject,
+  parseImport,
+  prepareImport,
+  type Project,
+} from '../../engine'
 
 class AppDB extends Dexie {
   projects!: EntityTable<Project, 'id'>
@@ -58,4 +66,19 @@ export async function duplicateProject(id: string): Promise<void> {
 
 export async function deleteProject(id: string): Promise<void> {
   await db.projects.delete(id)
+}
+
+/** JSON backup of every project. */
+export async function exportAllProjects(): Promise<string> {
+  const projects = await db.projects.orderBy('updatedAt').reverse().toArray()
+  return JSON.stringify(buildExport(projects, Date.now()), null, 2)
+}
+
+/** Imports a backup; projects whose id already exists are added as copies. Returns how many were imported. */
+export async function importProjects(text: string): Promise<number> {
+  const incoming = parseImport(text)
+  const existing = (await db.projects.toCollection().primaryKeys()) as string[]
+  const prepared = prepareImport(incoming, existing, () => crypto.randomUUID())
+  await db.projects.bulkAdd(prepared)
+  return prepared.length
 }

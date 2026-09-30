@@ -47,7 +47,7 @@ export const usePcStore = create<PcState>()((set, get) => ({
       const history = line.trim() && prev.history.at(-1) !== line
         ? [...prev.history, line].slice(-HISTORY_SIZE)
         : prev.history
-      const lines = [...prev.lines, HOST_PROMPT + line, ...result.output].slice(-MAX_LINES)
+      const lines = result.clear ? [] : [...prev.lines, HOST_PROMPT + line, ...result.output].slice(-MAX_LINES)
       return { consoles: { ...s.consoles, [deviceId]: { lines, history } } }
     })
   },

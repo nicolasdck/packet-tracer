@@ -163,7 +163,8 @@ function errorLines(result: Exclude<ParseResult, { ok: true }>, promptLength: nu
 export function executeLine(project: Project, session: CliSession, line: string): CliResult {
   if (session.pending) return run(project, session, answerPending(line))
 
-  if (!line.trim()) return { project, session, output: [] }
+  // Empty lines, and lines starting with "!" (IOS comments), do nothing.
+  if (!line.trim() || line.trimStart().startsWith('!')) return { project, session, output: [] }
   const withHistory: CliSession = {
     ...session,
     history: session.history.at(-1) === line ? session.history : [...session.history, line].slice(-HISTORY_SIZE),

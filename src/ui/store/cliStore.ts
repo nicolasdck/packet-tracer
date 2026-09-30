@@ -17,6 +17,8 @@ export interface Terminal {
   session: CliSession
   /** Scrollback, one entry per line. */
   lines: string[]
+  /** Output of the last command, for the Copy button. */
+  lastOutput: string[]
 }
 
 interface CliState {
@@ -29,6 +31,11 @@ interface CliState {
   ctrlZ(): void
   help(line: string): void
   complete(line: string): string | null
+  /**
+   * Types pasted text: every complete line is executed in order, like a real
+   * terminal. Returns the trailing text without newline, to leave in the input.
+   */
+  paste(text: string): string
   forget(deviceId: string): void
   reset(): void
 }
@@ -47,7 +54,8 @@ export const useCliStore = create<CliState>()((set, get) => {
     set((s) => {
       const previous = s.terminals[deviceId]?.lines ?? []
       const lines = [...previous, ...echo, ...result.output].slice(-MAX_LINES)
-      return { terminals: { ...s.terminals, [deviceId]: { session: result.session, lines } } }
+      const terminal = { session: result.session, lines, lastOutput: result.output }
+      return { terminals: { ...s.terminals, [deviceId]: terminal } }
     })
   }
 
@@ -98,6 +106,13 @@ export const useCliStore = create<CliState>()((set, get) => {
     complete: (line) => {
       const a = active()
       return a ? cliComplete(currentProject(), a.terminal.session, line) : null
+    },
+
+    paste: (text) => {
+      const lines = text.replace(/\r\n?/g, '\n').split('\n')
+      const rest = lines.pop() ?? ''
+      for (const line of lines) get().submit(line)
+      return rest
     },
 
     forget: (deviceId) =>

@@ -13,10 +13,24 @@ interface Props {
   /** Tab completion; returns the completed line or null. */
   onComplete?(line: string): string | null
   onCtrlZ?(): void
+  onCopy?(): void
+  /** Paste; `insert` adds text to the input line (the part of the paste not yet executed). */
+  onPaste?(insert: (text: string) => void): void
 }
 
 /** Scrollback + input line + mobile quick keys. Knows nothing about IOS. */
-export function ConsoleView({ lines, prompt, masked = false, history, onSubmit, onHelp, onComplete, onCtrlZ }: Props) {
+export function ConsoleView({
+  lines,
+  prompt,
+  masked = false,
+  history,
+  onSubmit,
+  onHelp,
+  onComplete,
+  onCtrlZ,
+  onCopy,
+  onPaste,
+}: Props) {
   const [input, setInput] = useState('')
   /** Position in the history while browsing with ↑/↓ (null = editing a new line). */
   const [historyIndex, setHistoryIndex] = useState<number | null>(null)
@@ -128,6 +142,16 @@ export function ConsoleView({ lines, prompt, masked = false, history, onSubmit, 
         onUp={() => browse(-1)}
         onDown={() => browse(1)}
         onCtrlZ={onCtrlZ ? ctrlZ : undefined}
+        onCopy={onCopy}
+        onPaste={
+          onPaste
+            ? () =>
+                onPaste((text) => {
+                  setInput((current) => current + text)
+                  inputRef.current?.focus()
+                })
+            : undefined
+        }
       />
     </div>
   )

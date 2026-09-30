@@ -270,3 +270,15 @@ describe('immutability', () => {
     expect(t.project).not.toBe(before)
   })
 })
+
+describe('comments', () => {
+  it('ignores lines starting with "!" in every mode, like IOS', () => {
+    const t = TestConsole.of('router')
+    expect(t.run('! a comment')).toBe('')
+    t.runAll('en', 'conf t')
+    expect(t.run('!')).toBe('')
+    expect(t.run('   ! indented')).toBe('')
+    expect(t.prompt).toBe('Router(config)#')
+    expect(t.session.history).not.toContain('!')
+  })
+})
