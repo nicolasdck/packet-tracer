@@ -183,7 +183,7 @@ export function executeLine(project: Project, session: CliSession, line: string)
     const fallback = parse(rootsFor(parent), line, c)
     if (fallback.ok) {
       result = fallback
-      s = { ...withHistory, mode: parent, ifContext: [], lineContext: undefined }
+      s = { ...withHistory, mode: parent, ifContext: [], lineContext: undefined, vlanContext: undefined }
     }
   }
 

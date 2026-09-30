@@ -1,4 +1,4 @@
-import { ifMedia, splitIfName } from '../../model/ifname'
+import { ifMedia, isSubinterface, splitIfName } from '../../model/ifname'
 import {
   broadcastOf,
   formatIpv4,
@@ -8,10 +8,11 @@ import {
   overlaps,
   parseIpv4,
 } from '../../model/ipv4'
-import type { Duplex, IfConfig, Speed } from '../../model/types'
+import type { Duplex, IfConfig, Speed, SwitchportConfig } from '../../model/types'
+import { MAX_VLAN, MIN_VLAN, allVlans, parseVlanList } from '../../model/vlans'
 import { linkAt } from '../../project/topology'
-import { exitToConfig, withLinkMessages } from '../actions'
-import { int, ipv4, line } from '../args'
+import { ensureVlan, exitToConfig, withLinkMessages } from '../actions'
+import { int, ipv4, line, vlanList } from '../args'
 import { arg, kw } from '../dsl'
 import type { CmdNode, ExecCtx, NodeCtx } from '../types'
 
@@ -21,12 +22,19 @@ export const CLOCK_RATES = [
   800000, 1000000, 1300000, 2000000, 4000000, 8000000,
 ]
 
-const allMedia = (c: NodeCtx, media: string) => c.session.ifContext.every((n) => ifMedia(n) === media)
-const isEthernet = (c: NodeCtx) => allMedia(c, 'ethernet')
-const isSerial = (c: NodeCtx) => allMedia(c, 'serial')
+const all = (c: NodeCtx, test: (name: string) => boolean) => c.session.ifContext.every(test)
+const isPhysical = (c: NodeCtx) => all(c, (n) => c.device.ports.some((p) => p.name === n))
+const isEthernet = (c: NodeCtx) => isPhysical(c) && all(c, (n) => ifMedia(n) === 'ethernet')
+const isSerial = (c: NodeCtx) => all(c, (n) => ifMedia(n) === 'serial')
 /** Layer 3 interface (no switchport): accepts an IP address. */
-const isRouted = (c: NodeCtx) => c.session.ifContext.every((n) => !c.device.running.interfaces[n]?.switchport)
-const hasGigabit = (c: NodeCtx) => c.session.ifContext.every((n) => splitIfName(n).type.full === 'GigabitEthernet')
+const isRouted = (c: NodeCtx) => all(c, (n) => !c.device.running.interfaces[n]?.switchport)
+const hasGigabit = (c: NodeCtx) => all(c, (n) => splitIfName(n).type.full === 'GigabitEthernet')
+const isSwitchPhysical = (c: NodeCtx) => c.device.kind !== 'router' && isPhysical(c)
+/** Layer 2 switch port (not a 3560 routed port). */
+const isL2 = (c: NodeCtx) => isSwitchPhysical(c) && all(c, (n) => !!c.device.running.interfaces[n]?.switchport)
+const isMultilayer = (c: NodeCtx) => c.device.kind === 'switch-l3'
+
+const DEFAULT_SWITCHPORT: SwitchportConfig = { mode: 'dynamic-auto', accessVlan: 1, nativeVlan: 1, allowedVlans: 'all' }
 
 function eachIf(ctx: ExecCtx, fn: (cfg: IfConfig) => void) {
   for (const name of ctx.session.ifContext) {
@@ -41,6 +49,13 @@ function setShutdown(ctx: ExecCtx, shutdown: boolean) {
 
 function setIpAddress(ctx: ExecCtx, address: string, mask: string) {
   const name = ctx.session.ifContext[0]!
+  const current = ctx.device.running.interfaces[name]!
+  if (current.switchport) return ctx.out('% IP addresses may not be configured on L2 links.')
+  if (isSubinterface(name) && !current.encapsulation) {
+    return ctx.out(
+      '% Configuring IP routing on a LAN subinterface is only allowed if that subinterface is already configured as part of an IEEE 802.10, IEEE 802.1Q, or ISL vLAN.',
+    )
+  }
   const ip = parseIpv4(address)!
   const m = parseIpv4(mask)!
   const prefix = maskToPrefix(m)
@@ -116,7 +131,8 @@ const speedNode = kw('speed', 'Configure speed operation.', {
 })
 
 const ipNode = kw('ip', 'Interface Internet Protocol config commands', {
-  when: isRouted,
+  // A 3560 switch port offers the command but rejects it (L2 link).
+  when: (c) => isRouted(c) || isMultilayer(c),
   children: [
     kw('address', 'Set the IP address of an interface', {
       noRun: (ctx) => eachIf(ctx, (cfg) => delete cfg.ip),
@@ -149,6 +165,143 @@ const clockNode = kw('clock', 'Configure serial interface clock', {
   ],
 })
 
+// --- switchport ---------------------------------------------------------------
+
+function eachSwitchport(ctx: ExecCtx, fn: (sp: SwitchportConfig) => void) {
+  eachIf(ctx, (cfg) => cfg.switchport && fn(cfg.switchport))
+}
+
+function setMode(ctx: ExecCtx, mode: 'access' | 'trunk') {
+  if (mode === 'trunk' && ctx.device.kind === 'switch-l3') {
+    const auto = ctx.session.ifContext.some((n) => !ctx.device.running.interfaces[n]?.switchport?.trunkEncapsulation)
+    if (auto) {
+      ctx.out('Command rejected: An interface whose trunk encapsulation is "Auto" can not be configured to "trunk" mode.')
+      return
+    }
+  }
+  eachSwitchport(ctx, (sp) => (sp.mode = mode))
+}
+
+function setAccessVlan(ctx: ExecCtx, vlan: number) {
+  if (ensureVlan(ctx, vlan)) ctx.out('% Access VLAN does not exist. Creating vlan ' + vlan)
+  eachSwitchport(ctx, (sp) => (sp.accessVlan = vlan))
+}
+
+function changeAllowed(ctx: ExecCtx, op: 'set' | 'add' | 'remove', list: number[]) {
+  eachSwitchport(ctx, (sp) => {
+    const current = sp.allowedVlans === 'all' ? allVlans() : sp.allowedVlans
+    const next =
+      op === 'set' ? list : op === 'add' ? [...new Set([...current, ...list])] : current.filter((v) => !list.includes(v))
+    sp.allowedVlans = next.length === allVlans().length ? 'all' : next.sort((a, b) => a - b)
+  })
+}
+
+const vlanListArg = (op: 'set' | 'add' | 'remove', help: string) =>
+  arg('list', vlanList(), help, {
+    run: (ctx, args) => changeAllowed(ctx, op, parseVlanList(String(args.list))!),
+  })
+
+const switchportNode = kw('switchport', 'Set switching mode characteristics', {
+  when: isSwitchPhysical,
+  // Bare `switchport` / `no switchport`: layer 2 or routed port (3560 only).
+  run: (ctx) => {
+    if (ctx.device.kind !== 'switch-l3') return ctx.out('% Incomplete command.')
+    eachIf(ctx, (cfg) => {
+      if (cfg.switchport) return
+      cfg.switchport = { ...DEFAULT_SWITCHPORT }
+      delete cfg.ip
+    })
+  },
+  noRun: (ctx) => {
+    if (ctx.device.kind !== 'switch-l3') return ctx.out('% Incomplete command.')
+    eachIf(ctx, (cfg) => delete cfg.switchport)
+  },
+  children: [
+    kw('mode', 'Set trunking mode of the interface', {
+      when: isL2,
+      noRun: (ctx) => eachSwitchport(ctx, (sp) => (sp.mode = 'dynamic-auto')),
+      children: [
+        kw('access', 'Set trunking mode to ACCESS unconditionally', { run: (ctx) => setMode(ctx, 'access') }),
+        kw('trunk', 'Set trunking mode to TRUNK unconditionally', { run: (ctx) => setMode(ctx, 'trunk') }),
+      ],
+    }),
+    kw('access', 'Set access mode characteristics of the interface', {
+      when: isL2,
+      children: [
+        kw('vlan', 'Set VLAN when interface is in access mode', {
+          noRun: (ctx) => eachSwitchport(ctx, (sp) => (sp.accessVlan = 1)),
+          children: [
+            arg('vlan', int(MIN_VLAN, MAX_VLAN), 'VLAN ID of the VLAN when this port is in access mode', {
+              run: (ctx, args) => setAccessVlan(ctx, args.vlan as number),
+            }),
+          ],
+        }),
+      ],
+    }),
+    kw('trunk', 'Set trunking characteristics of the interface', {
+      when: isL2,
+      children: [
+        kw('allowed', 'Set allowed VLAN characteristics when interface is in trunking mode', {
+          children: [
+            kw('vlan', 'Set allowed VLANs when interface is in trunking mode', {
+              noRun: (ctx) => eachSwitchport(ctx, (sp) => (sp.allowedVlans = 'all')),
+              children: [
+                vlanListArg('set', 'VLAN IDs of the allowed VLANs when this port is in trunking mode'),
+                kw('add', 'add VLANs to the current list', { children: [vlanListArg('add', 'VLAN IDs to add')] }),
+                kw('remove', 'remove VLANs from the current list', {
+                  children: [vlanListArg('remove', 'VLAN IDs to remove')],
+                }),
+                kw('all', 'all VLANs', { run: (ctx) => eachSwitchport(ctx, (sp) => (sp.allowedVlans = 'all')) }),
+                kw('none', 'no VLANs', { run: (ctx) => eachSwitchport(ctx, (sp) => (sp.allowedVlans = [])) }),
+              ],
+            }),
+          ],
+        }),
+        kw('native', 'Set trunking native characteristics when interface is in trunking mode', {
+          children: [
+            kw('vlan', 'Set native VLAN when interface is in trunking mode', {
+              noRun: (ctx) => eachSwitchport(ctx, (sp) => (sp.nativeVlan = 1)),
+              children: [
+                arg('vlan', int(MIN_VLAN, MAX_VLAN), 'VLAN ID of the native VLAN when this port is in trunking mode', {
+                  run: (ctx, args) => eachSwitchport(ctx, (sp) => (sp.nativeVlan = args.vlan as number)),
+                }),
+              ],
+            }),
+          ],
+        }),
+        kw('encapsulation', 'Set trunking encapsulation when interface is in trunking mode', {
+          when: isMultilayer,
+          noRun: (ctx) => eachSwitchport(ctx, (sp) => delete sp.trunkEncapsulation),
+          children: [
+            kw('dot1q', 'Interface uses only 802.1q trunking encapsulation when trunking', {
+              run: (ctx) => eachSwitchport(ctx, (sp) => (sp.trunkEncapsulation = 'dot1q')),
+            }),
+          ],
+        }),
+      ],
+    }),
+  ],
+})
+
+// --- subinterfaces --------------------------------------------------------------
+
+const encapsulationNode = kw('encapsulation', 'Set encapsulation type for an interface', {
+  children: [
+    kw('dot1Q', 'IEEE 802.1Q Virtual LAN', {
+      children: [
+        arg('vlan', int(MIN_VLAN, MAX_VLAN), 'IEEE 802.1Q VLAN ID required', {
+          run: (ctx, args) => eachIf(ctx, (cfg) => (cfg.encapsulation = { vlan: args.vlan as number, native: false })),
+          children: [
+            kw('native', 'Make this as native VLAN', {
+              run: (ctx, args) => eachIf(ctx, (cfg) => (cfg.encapsulation = { vlan: args.vlan as number, native: true })),
+            }),
+          ],
+        }),
+      ],
+    }),
+  ],
+})
+
 const exitNode = kw('exit', 'Exit from interface configuration mode', { run: exitToConfig })
 
 export const interfaceModeNodes: CmdNode[] = [
@@ -158,7 +311,17 @@ export const interfaceModeNodes: CmdNode[] = [
   ipNode,
   shutdownNode,
   speedNode,
+  switchportNode,
   exitNode,
 ]
 
-export const interfaceRangeNodes: CmdNode[] = [descriptionNode, duplexNode, shutdownNode, speedNode, exitNode]
+export const interfaceRangeNodes: CmdNode[] = [
+  descriptionNode,
+  duplexNode,
+  shutdownNode,
+  speedNode,
+  switchportNode,
+  exitNode,
+]
+
+export const subinterfaceModeNodes: CmdNode[] = [descriptionNode, encapsulationNode, ipNode, shutdownNode, exitNode]

@@ -1,6 +1,7 @@
 import { IF_TYPES, splitIfName } from '../model/ifname'
 import { ipv4ValidPrefix, parseIpv4 } from '../model/ipv4'
 import type { IfName } from '../model/types'
+import { MAX_VLAN, MIN_VLAN, formatVlanList, parseVlanList } from '../model/vlans'
 import type { ArgSpec, MatchResult, NodeCtx } from './types'
 
 /** Length of the longest common prefix between `text` and any candidate. */
@@ -46,17 +47,44 @@ export function interfacesOfType(c: NodeCtx, typeFull: string): IfName[] {
   return Object.keys(c.device.running.interfaces).filter((n) => splitIfName(n).type.full === typeFull)
 }
 
-/** Interface number following a type keyword ("0/1" after "FastEthernet"). */
-export const ifNumber = (typeFull: string): ArgSpec => ({
+const MAX_SUBINTERFACE = 4294967295
+
+/**
+ * Interface number following a type keyword ("0/1" after "FastEthernet").
+ * With `create`, also accepts interfaces that `interface` creates: a VLAN
+ * number for SVIs, "0/0.10" for router subinterfaces.
+ */
+export const ifNumber = (typeFull: string, create = false): ArgSpec => ({
   label: (c) => {
+    if (typeFull === 'Vlan' && create) return `<${MIN_VLAN}-${MAX_VLAN}>`
     const slots = interfacesOfType(c, typeFull).map((n) => Number(splitIfName(n).number.split('/')[0]))
     return slots.length ? `<${Math.min(...slots)}-${Math.max(...slots)}>` : '<0-0>'
   },
   match: (text, c): MatchResult => {
     const numbers = interfacesOfType(c, typeFull).map((n) => splitIfName(n).number)
-    return numbers.includes(text)
-      ? { ok: true, value: typeFull + text }
-      : { ok: false, offset: bestPrefix(text, numbers) }
+    if (numbers.includes(text)) return { ok: true, value: typeFull + text }
+    if (create && typeFull === 'Vlan') {
+      const bad = text.search(/\D/)
+      if (bad !== -1) return { ok: false, offset: bad }
+      const n = Number(text)
+      return n >= MIN_VLAN && n <= MAX_VLAN ? { ok: true, value: `Vlan${n}` } : { ok: false, offset: 0 }
+    }
+    const sub = /^(.+)\.(\d+)$/.exec(text)
+    if (create && sub && c.device.kind === 'router' && c.device.ports.some((p) => p.name === typeFull + sub[1])) {
+      const n = Number(sub[2])
+      if (n >= 1 && n <= MAX_SUBINTERFACE) return { ok: true, value: `${typeFull}${sub[1]}.${n}` }
+      return { ok: false, offset: sub[1]!.length + 1 }
+    }
+    return { ok: false, offset: bestPrefix(text, numbers) }
+  },
+})
+
+/** VLAN list: "10", "10,20", "30-40". */
+export const vlanList = (): ArgSpec => ({
+  label: 'WORD',
+  match: (text) => {
+    const list = parseVlanList(text)
+    return list ? { ok: true, value: formatVlanList(list) } : { ok: false, offset: 0 }
   },
 })
 

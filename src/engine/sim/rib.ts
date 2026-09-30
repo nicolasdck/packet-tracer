@@ -1,3 +1,4 @@
+import { isIosDevice } from '../model/catalog'
 import type { IfName, Project } from '../model/types'
 import { networkOf } from '../model/ipv4'
 import { l3Interfaces } from './l3'
@@ -15,10 +16,10 @@ export interface Route {
   metric: number
 }
 
-/** Routes a device knows: connected (C) and local (L) routes of its up interfaces. */
+/** Routes an IOS device knows: connected (C) and local (L) routes of its up interfaces. */
 export function buildRib(project: Project, deviceId: string): Route[] {
   const device = project.devices[deviceId]
-  if (device?.kind !== 'router') return []
+  if (!device || !isIosDevice(device)) return []
   const routes: Route[] = []
   for (const l3 of l3Interfaces(project, deviceId)) {
     routes.push({ code: 'C', network: networkOf(l3.ip, l3.prefix), prefix: l3.prefix, iface: l3.iface, ad: 0, metric: 0 })

@@ -1,4 +1,6 @@
 import { isIosDevice } from '../model/catalog'
+import { parentIf } from '../model/ifname'
+import { baseMac } from '../model/mac'
 import { maskToPrefix, networkOf, parseIpv4 } from '../model/ipv4'
 import type { IfName, Project } from '../model/types'
 import { interfaceStatus } from './linkState'
@@ -12,9 +14,11 @@ export interface L3Interface {
   mac: string
 }
 
-function macOf(project: Project, deviceId: string, iface: IfName): string {
+/** MAC of an interface: its port's, its parent port's for a subinterface, the base MAC for an SVI. */
+export function macOf(project: Project, deviceId: string, iface: IfName): string {
   const device = project.devices[deviceId]!
-  return (device.ports.find((p) => p.name === iface) ?? device.ports[0])?.mac ?? '0000.0000.0000'
+  const port = device.ports.find((p) => p.name === parentIf(iface))
+  return port?.mac ?? baseMac(deviceId)
 }
 
 export function l3Interfaces(project: Project, deviceId: string): L3Interface[] {

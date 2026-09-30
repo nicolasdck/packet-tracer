@@ -12,3 +12,8 @@ export function deviceMac(seq: number, portIndex: number): string {
   const hex = (MAC_BASE + seq * 0x100 + portIndex).toString(16).padStart(12, '0')
   return `${hex.slice(0, 4)}.${hex.slice(4, 8)}.${hex.slice(8, 12)}`
 }
+
+/** Base MAC of a device (used by its SVIs), derived from its id "d<seq>". */
+export function baseMac(deviceId: string): string {
+  return deviceMac(Number(deviceId.slice(1)) || 0, 0)
+}

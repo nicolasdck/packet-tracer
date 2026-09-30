@@ -1,6 +1,7 @@
 import { ifMedia, splitIfName } from '../../model/ifname'
 import { maskToPrefix, parseIpv4 } from '../../model/ipv4'
 import type { IfName, IosDevice, Project } from '../../model/types'
+import { macOf } from '../../sim/l3'
 import { interfaceStatus } from '../../sim/linkState'
 import { orderedInterfaces } from './config'
 
@@ -25,10 +26,6 @@ function hardware(device: IosDevice, name: IfName): string {
   return full === 'GigabitEthernet' ? 'Gigabit Ethernet' : 'Lance'
 }
 
-function macOf(device: IosDevice, name: IfName): string {
-  return (device.ports.find((p) => p.name === name) ?? device.ports[0])?.mac ?? '0000.0000.0000'
-}
-
 function describeInterface(project: Project, device: IosDevice, name: IfName): string[] {
   const cfg = device.running.interfaces[name]!
   const st = interfaceStatus(project, device.id, name)
@@ -37,7 +34,7 @@ function describeInterface(project: Project, device: IosDevice, name: IfName): s
   const reason = st.status === 'administratively down'
     ? ' (disabled)'
     : isSwitchPort ? (st.status === 'up' ? ' (connected)' : ' (notconnect)') : ''
-  const mac = macOf(device, name)
+  const mac = macOf(project, device.id, name)
   const bw = splitIfName(name).type.bandwidthKbps
   const out = [
     `${name} is ${st.status}, line protocol is ${st.protocol}${reason}`,
@@ -53,10 +50,12 @@ function describeInterface(project: Project, device: IosDevice, name: IfName): s
   out.push(
     `  MTU 1500 bytes, BW ${bw} Kbit, DLY ${media === 'serial' ? 20000 : media === 'virtual' ? 10 : 100} usec,`,
     '     reliability 255/255, txload 1/255, rxload 1/255',
-    `  Encapsulation ${media === 'serial' ? 'HDLC' : 'ARPA'}, loopback not set`,
+    cfg.encapsulation
+      ? `  Encapsulation 802.1Q Virtual LAN, Vlan ID  ${cfg.encapsulation.vlan}.`
+      : `  Encapsulation ${media === 'serial' ? 'HDLC' : 'ARPA'}, loopback not set`,
     '  Keepalive set (10 sec)',
   )
-  if (media === 'ethernet') {
+  if (media === 'ethernet' && device.ports.some((p) => p.name === name)) {
     const duplex = cfg.duplex === 'full' ? 'Full-duplex' : cfg.duplex === 'half' ? 'Half-duplex' : 'Auto-duplex'
     const speed = cfg.speed === undefined || cfg.speed === 'auto' ? 'Auto Speed' : `${cfg.speed}Mb/s`
     out.push(`  ${duplex}, ${speed}, media type is RJ45`)

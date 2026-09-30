@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { cloneProject, createProject, type Project } from '../../engine'
+import { cloneProject, createProject, migrateProject, type Project } from '../../engine'
 
 class AppDB extends Dexie {
   projects!: EntityTable<Project, 'id'>
@@ -31,8 +31,9 @@ export async function listProjects(): Promise<ProjectSummary[]> {
   }))
 }
 
-export function getProject(id: string): Promise<Project | undefined> {
-  return db.projects.get(id)
+export async function getProject(id: string): Promise<Project | undefined> {
+  const project = await db.projects.get(id)
+  return project && migrateProject(project)
 }
 
 export async function saveProject(project: Project): Promise<void> {
@@ -52,7 +53,7 @@ export async function renameProject(id: string, name: string): Promise<void> {
 export async function duplicateProject(id: string): Promise<void> {
   const source = await db.projects.get(id)
   if (!source) return
-  await db.projects.add(cloneProject(source, crypto.randomUUID(), `${source.name} (copy)`, Date.now()))
+  await db.projects.add(cloneProject(migrateProject(source), crypto.randomUUID(), `${source.name} (copy)`, Date.now()))
 }
 
 export async function deleteProject(id: string): Promise<void> {

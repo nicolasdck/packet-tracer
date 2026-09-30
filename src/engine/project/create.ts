@@ -56,6 +56,7 @@ export function defaultIosConfig(kind: IosKind): IosConfig {
     lines: { console: { login: false }, vty: { login: true } },
     interfaces,
     vlans: kind === 'router' ? {} : { 1: { name: 'default' } },
+    ipRouting: kind === 'router',
   }
 }
 

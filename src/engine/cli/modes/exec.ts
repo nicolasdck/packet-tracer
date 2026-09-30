@@ -6,17 +6,37 @@ import { arg, kw } from '../dsl'
 import { iosPingOutput, iosTracerouteOutput } from '../render/ping'
 import { isConfigModified, showRunningConfig, showStartupConfig } from '../render/config'
 import { showInterfaces, showIpInterfaceBrief } from '../render/interfaces'
+import { showArp, showInterfacesTrunk, showMacAddressTable, showVlanBrief } from '../render/switching'
 import { showVersion } from '../render/version'
-import type { CmdNode, Handler } from '../types'
+import type { CmdNode, Handler, NodeCtx } from '../types'
 import { interfaceNodes } from './shared'
+
+const isSwitch = (c: NodeCtx) => c.device.kind !== 'router'
+const arpNode = (help: string) => kw('arp', help, { run: (ctx) => ctx.out(...showArp(ctx.project, ctx.device)) })
+const macTable: Handler = (ctx) => ctx.out(...showMacAddressTable(ctx.device))
 
 function showNodes(privileged: boolean): CmdNode {
   const children: CmdNode[] = [
     kw('version', 'System hardware and software status', {
       run: (ctx) => ctx.out(...showVersion(ctx.device)),
     }),
+    arpNode('ARP table'),
+    kw('mac', 'MAC configuration', {
+      when: isSwitch,
+      children: [kw('address-table', 'MAC forwarding table', { run: macTable })],
+    }),
+    kw('mac-address-table', 'MAC forwarding table', { when: isSwitch, run: macTable }),
+    kw('vlan', 'VTP VLAN status', {
+      when: isSwitch,
+      children: [
+        kw('brief', 'VTP all VLAN status in brief', {
+          run: (ctx) => ctx.out(...showVlanBrief(ctx.project, ctx.device)),
+        }),
+      ],
+    }),
     kw('ip', 'IP information', {
       children: [
+        arpNode('IP ARP table'),
         kw('interface', 'IP interface status and configuration', {
           children: [
             kw('brief', 'Brief summary of IP status and configuration', {
@@ -28,7 +48,16 @@ function showNodes(privileged: boolean): CmdNode {
     }),
     kw('interfaces', 'Interface status and configuration', {
       run: (ctx) => ctx.out(...showInterfaces(ctx.project, ctx.device)),
-      children: interfaceNodes((ctx, args) => ctx.out(...showInterfaces(ctx.project, ctx.device, args.if as string)), true),
+      children: [
+        ...interfaceNodes({
+          run: (ctx, args) => ctx.out(...showInterfaces(ctx.project, ctx.device, args.if as string)),
+          includeVirtual: true,
+        }),
+        kw('trunk', 'Show interface trunk information', {
+          when: (c) => c.device.kind !== 'router',
+          run: (ctx) => ctx.out(...showInterfacesTrunk(ctx.project, ctx.device)),
+        }),
+      ],
     }),
   ]
   if (privileged) {

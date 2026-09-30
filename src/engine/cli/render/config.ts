@@ -1,5 +1,6 @@
-import { ifMedia } from '../../model/ifname'
-import type { IfConfig, IfName, IosConfig, IosDevice, LineConfig } from '../../model/types'
+import { ifMedia, isSubinterface, parentIf, sviVlan } from '../../model/ifname'
+import type { IfConfig, IfName, IosConfig, IosDevice, LineConfig, SwitchportConfig } from '../../model/types'
+import { formatVlanList } from '../../model/vlans'
 import { type5, type7 } from '../crypto'
 
 const IOS_VERSION: Record<IosDevice['kind'], string> = {
@@ -8,21 +9,52 @@ const IOS_VERSION: Record<IosDevice['kind'], string> = {
   'switch-l3': '12.2',
 }
 
-/** Interfaces in IOS display order: physical ports first, then virtual ones. */
+const subNumber = (name: IfName) => Number(name.slice(name.indexOf('.') + 1))
+
+/**
+ * Interfaces in IOS display order: each physical port followed by its
+ * subinterfaces, then SVIs by VLAN number.
+ */
 export function orderedInterfaces(device: IosDevice, config: IosConfig = device.running): IfName[] {
-  const physical = device.ports.map((p) => p.name).filter((n) => config.interfaces[n])
-  const others = Object.keys(config.interfaces).filter((n) => !physical.includes(n))
-  return [...physical, ...others]
+  const names = Object.keys(config.interfaces)
+  const out: IfName[] = []
+  for (const port of device.ports.map((p) => p.name)) {
+    if (config.interfaces[port]) out.push(port)
+    const subs = names.filter((n) => isSubinterface(n) && parentIf(n) === port)
+    out.push(...subs.sort((a, b) => subNumber(a) - subNumber(b)))
+  }
+  const svis = names.filter((n) => sviVlan(n) !== null).sort((a, b) => sviVlan(a)! - sviVlan(b)!)
+  return [...out, ...svis, ...names.filter((n) => !out.includes(n) && !svis.includes(n))]
+}
+
+function switchportLines(sp: SwitchportConfig): string[] {
+  const out: string[] = []
+  if (sp.trunkEncapsulation) out.push(` switchport trunk encapsulation ${sp.trunkEncapsulation}`)
+  if (sp.accessVlan !== 1) out.push(` switchport access vlan ${sp.accessVlan}`)
+  if (sp.nativeVlan !== 1) out.push(` switchport trunk native vlan ${sp.nativeVlan}`)
+  if (sp.allowedVlans !== 'all') {
+    out.push(` switchport trunk allowed vlan ${sp.allowedVlans.length ? formatVlanList(sp.allowedVlans) : 'none'}`)
+  }
+  if (sp.mode !== 'dynamic-auto') out.push(` switchport mode ${sp.mode}`)
+  return out
 }
 
 function interfaceLines(device: IosDevice, name: IfName, cfg: IfConfig): string[] {
   const out = [`interface ${name}`]
   const isRouter = device.kind === 'router'
+  const isPort = device.ports.some((p) => p.name === name)
   if (cfg.description !== undefined) out.push(` description ${cfg.description}`)
-  if (!cfg.switchport) {
+  if (cfg.encapsulation) {
+    out.push(` encapsulation dot1Q ${cfg.encapsulation.vlan}${cfg.encapsulation.native ? ' native' : ''}`)
+  }
+  if (cfg.switchport) {
+    out.push(...switchportLines(cfg.switchport))
+  } else {
+    // A 3560 port without switchport is a routed port.
+    if (device.kind === 'switch-l3' && isPort) out.push(' no switchport')
     out.push(cfg.ip ? ` ip address ${cfg.ip.address} ${cfg.ip.mask}` : ' no ip address')
   }
-  if (ifMedia(name) === 'ethernet') {
+  if (isPort && ifMedia(name) === 'ethernet') {
     // Routers always print duplex/speed; switches only when not auto.
     if (isRouter || cfg.duplex !== 'auto') out.push(` duplex ${cfg.duplex ?? 'auto'}`)
     if (isRouter || cfg.speed !== 'auto') out.push(` speed ${cfg.speed ?? 'auto'}`)
@@ -57,6 +89,8 @@ export function renderConfig(device: IosDevice, config: IosConfig): string[] {
   ]
   if (config.enableSecret !== undefined) out.push(`enable secret 5 ${type5(config.enableSecret)}`, '!')
   out.push('!', '!')
+  if (device.kind === 'switch-l3' && config.ipRouting) out.push('ip routing', '!')
+  if (device.kind === 'router' && !config.ipRouting) out.push('no ip routing', '!')
   if (isSwitch) out.push('spanning-tree mode pvst', 'spanning-tree extend system-id', '!')
   for (const name of orderedInterfaces(device, config)) {
     out.push(...interfaceLines(device, name, config.interfaces[name]!))

@@ -4,8 +4,9 @@ import { NEGATE } from '../parser'
 import type { CmdNode, ModeDef, ModeId } from '../types'
 import { privNodes, userNodes } from './exec'
 import { configNodes } from './global'
-import { interfaceModeNodes, interfaceRangeNodes } from './interface'
+import { interfaceModeNodes, interfaceRangeNodes, subinterfaceModeNodes } from './interface'
 import { lineModeNodes } from './line'
+import { vlanModeNodes } from './vlan'
 
 const MODE_DEFS: Partial<Record<ModeId, ModeDef>> = {
   user: { id: 'user', prompt: '>', nodes: userNodes },
@@ -14,6 +15,8 @@ const MODE_DEFS: Partial<Record<ModeId, ModeDef>> = {
   'config-if': { id: 'config-if', prompt: '(config-if)#', nodes: interfaceModeNodes, parent: 'config' },
   'config-if-range': { id: 'config-if-range', prompt: '(config-if-range)#', nodes: interfaceRangeNodes, parent: 'config' },
   'config-line': { id: 'config-line', prompt: '(config-line)#', nodes: lineModeNodes, parent: 'config' },
+  'config-subif': { id: 'config-subif', prompt: '(config-subif)#', nodes: subinterfaceModeNodes, parent: 'config' },
+  'config-vlan': { id: 'config-vlan', prompt: '(config-vlan)#', nodes: vlanModeNodes, parent: 'config' },
 }
 
 export function modeDef(mode: ModeId): ModeDef {

@@ -1,8 +1,8 @@
 import { isHostDevice, isIosDevice } from '../model/catalog'
-import { ifMedia } from '../model/ifname'
+import { ifMedia, sviVlan } from '../model/ifname'
 import { formatIpv4, parseIpv4 } from '../model/ipv4'
-import type { ArpEntry, IfName, LinkEnd, Project } from '../model/types'
-import { l2Domain } from './l2'
+import type { ArpEntry, IfName, IosDevice, LinkEnd, MacEntry, Project } from '../model/types'
+import { l2Reach, type L2Hop } from './l2'
 import { inSubnet, interfaceWithIp, l3Interfaces, type L3Interface } from './l3'
 import { buildRib, lookupRoute } from './rib'
 
@@ -58,12 +58,17 @@ export type Resolution =
  * IOS drops the packet that triggers an ARP request; hosts queue it.
  */
 export function resolve(project: Project, out: L3Interface, nextHop: number): Resolution {
-  const candidates = l2Domain(project, out.deviceId, out.iface)
+  const reached = l2Reach(project, out.deviceId, out.iface)
   // Only the interface that received the ARP request answers for its own address.
-  const owner = candidates
-    .map((c) => l3Interfaces(project, c.deviceId).find((i) => i.iface === c.port && i.ip === nextHop))
-    .find((i) => i !== undefined)
-  if (!owner) return { ok: false, reason: 'arp-failed' }
+  const target = reached.find((t) =>
+    l3Interfaces(project, t.deviceId).some((i) => i.iface === t.iface && i.ip === nextHop),
+  )
+  const owner = target && l3Interfaces(project, target.deviceId).find((i) => i.iface === target.iface)
+  if (!target || !owner) {
+    // The broadcast request still teaches every switch where the sender is.
+    for (const t of reached) learnPath(project, t.path, out.mac, 'in')
+    return { ok: false, reason: 'arp-failed' }
+  }
   const to = { deviceId: owner.deviceId, port: owner.iface }
 
   // Point-to-point serial links need no address resolution.
@@ -71,13 +76,35 @@ export function resolve(project: Project, out: L3Interface, nextHop: number): Re
 
   const ip = formatIpv4(nextHop)
   const cached = arpTable(project, out.deviceId).find((e) => e.ip === ip)
-  if (cached && cached.mac === owner.mac && cached.iface === out.iface) return { ok: true, to }
+  if (cached && cached.mac === owner.mac && cached.iface === out.iface) {
+    // Unicast frame: switches on the path learn the sender.
+    learnPath(project, target.path, out.mac, 'in')
+    return { ok: true, to }
+  }
 
-  // ARP request/reply: both ends learn each other.
+  // ARP request (flooded) and reply (unicast back): both ends and the switches learn.
+  for (const t of reached) learnPath(project, t.path, out.mac, 'in')
+  learnPath(project, target.path, owner.mac, 'out')
   learn(project, out.deviceId, { ip, mac: owner.mac, iface: out.iface })
   learn(project, owner.deviceId, { ip: formatIpv4(out.ip), mac: out.mac, iface: owner.iface })
   const device = project.devices[out.deviceId]!
   return isIosDevice(device) ? { ok: false, reason: 'pending' } : { ok: true, to }
+}
+
+/**
+ * MAC learning along a layer 2 path: each switch records `mac` on the port the
+ * frame came in on (`in` for frames from the source, `out` for frames going back).
+ */
+function learnPath(project: Project, path: L2Hop[], mac: string, side: 'in' | 'out') {
+  for (const hop of path) {
+    const port = side === 'in' ? hop.inPort : hop.outPort
+    if (sviVlan(port) !== null) continue
+    const table: MacEntry[] = (project.devices[hop.deviceId] as IosDevice).runtime.mac
+    const entry = { vlan: hop.vlan, mac, port }
+    const i = table.findIndex((e) => e.vlan === hop.vlan && e.mac === mac)
+    if (i === -1) table.push(entry)
+    else table[i] = entry
+  }
 }
 
 export interface Packet {
@@ -106,8 +133,10 @@ export function forward(project: Project, originId: string, packet: Packet): Del
     // Address of the interface the packet came in on (source of ICMP errors).
     let from: number | undefined
     if (ingress !== null) {
-      // Transit: hosts never forward, routers decrement the TTL.
-      if (!isIosDevice(project.devices[at]!)) return { kind: 'dropped' }
+      // Transit: only devices with IP routing forward (not hosts, not a 2960, not a 3560
+      // without `ip routing`); they decrement the TTL.
+      const device = project.devices[at]!
+      if (!isIosDevice(device) || !device.running.ipRouting) return { kind: 'dropped' }
       from = l3Interfaces(project, at).find((i) => i.iface === ingress)?.ip
       if (from === undefined) return { kind: 'dropped' }
       if (ttl <= 1) return { kind: 'ttl-expired', deviceId: at, from }

@@ -1,9 +1,12 @@
 import { CATALOG } from '../../model/catalog'
-import { endConfig } from '../actions'
+import { MAX_VLAN, MIN_VLAN } from '../../model/vlans'
+import { deleteInterface, deleteVlan, endConfig, ensureVlan, enterInterface } from '../actions'
 import { ifRange, int, line, word } from '../args'
 import { arg, kw } from '../dsl'
-import type { CmdNode, ExecCtx } from '../types'
+import type { CmdNode, ExecCtx, NodeCtx } from '../types'
 import { interfaceNodes } from './shared'
+
+const isSwitch = (c: NodeCtx) => c.device.kind !== 'router'
 
 const HOSTNAME_RE = /^[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
 
@@ -108,10 +111,12 @@ export const configNodes: CmdNode[] = [
   }),
   kw('interface', 'Select an interface to configure', {
     children: [
-      ...interfaceNodes((ctx, args) => {
-        ctx.session.mode = 'config-if'
-        ctx.session.ifContext = [args.if as string]
-      }, false),
+      ...interfaceNodes({
+        run: (ctx, args) => enterInterface(ctx, args.if as string),
+        noRun: (ctx, args) => deleteInterface(ctx, args.if as string),
+        includeVirtual: true,
+        create: true,
+      }),
       kw('range', 'interface range command', {
         children: [
           arg('range', ifRange(), 'Interface range', {
@@ -121,6 +126,33 @@ export const configNodes: CmdNode[] = [
             },
           }),
         ],
+      }),
+    ],
+  }),
+  kw('vlan', 'Vlan commands', {
+    when: isSwitch,
+    children: [
+      arg('vlan', int(MIN_VLAN, MAX_VLAN), 'ISL VLAN IDs 1-1005', {
+        run: (ctx, args) => {
+          const id = args.vlan as number
+          ensureVlan(ctx, id)
+          ctx.session.mode = 'config-vlan'
+          ctx.session.vlanContext = id
+        },
+        noRun: (ctx, args) => deleteVlan(ctx, args.vlan as number),
+      }),
+    ],
+  }),
+  kw('ip', 'Global IP configuration subcommands', {
+    when: (c) => c.device.kind !== 'switch-l2',
+    children: [
+      kw('routing', 'Enable IP routing', {
+        run: (ctx) => {
+          ctx.device.running.ipRouting = true
+        },
+        noRun: (ctx) => {
+          ctx.device.running.ipRouting = false
+        },
       }),
     ],
   }),

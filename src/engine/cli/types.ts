@@ -31,6 +31,8 @@ export interface CliSession {
   /** Interfaces being configured (config-if: one, config-if-range: several). */
   ifContext: IfName[]
   lineContext?: 'console' | 'vty'
+  /** VLAN being configured (config-vlan). */
+  vlanContext?: number
   pending: Pending | null
   history: string[]
 }

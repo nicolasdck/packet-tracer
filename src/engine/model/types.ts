@@ -79,8 +79,15 @@ export interface IosConfig {
   bannerMotd?: { delimiter: string; text: string }
   servicePasswordEncryption: boolean
   lines: { console: LineConfig; vty: LineConfig }
+  /** Physical ports, subinterfaces ("GigabitEthernet0/0.10") and SVIs ("Vlan10"). */
   interfaces: Record<IfName, IfConfig>
+  /**
+   * VLAN database. Like vlan.dat on a real switch it is not shown in the
+   * running-config and survives a reload.
+   */
   vlans: Record<number, VlanConfig>
+  /** Routes between interfaces (routers: on by default; 3560: `ip routing`). */
+  ipRouting: boolean
 }
 
 export interface LineConfig {
@@ -107,6 +114,8 @@ export interface IfConfig {
   clockRate?: number
   /** Switch ports only (absent on routed ports). */
   switchport?: SwitchportConfig
+  /** Subinterfaces only: 802.1Q tag handled by this subinterface. */
+  encapsulation?: { vlan: number; native: boolean }
 }
 
 export interface SwitchportConfig {
@@ -114,6 +123,8 @@ export interface SwitchportConfig {
   accessVlan: number
   nativeVlan: number
   allowedVlans: 'all' | number[]
+  /** 3560 only: a trunk needs `switchport trunk encapsulation dot1q`. */
+  trunkEncapsulation?: 'dot1q'
 }
 
 export interface MacEntry {

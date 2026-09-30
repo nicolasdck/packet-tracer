@@ -34,3 +34,19 @@ export function shortIfName(name: IfName): string {
 export function ifMedia(name: IfName): IfMedia {
   return splitIfName(name).type.media
 }
+
+/** "GigabitEthernet0/0.10" → "GigabitEthernet0/0"; physical names are returned unchanged. */
+export function parentIf(name: IfName): IfName {
+  const dot = name.indexOf('.')
+  return dot === -1 ? name : name.slice(0, dot)
+}
+
+export function isSubinterface(name: IfName): boolean {
+  return name.includes('.')
+}
+
+/** "Vlan10" → 10, null for other interfaces. */
+export function sviVlan(name: IfName): number | null {
+  const m = /^Vlan(\d+)$/.exec(name)
+  return m ? Number(m[1]) : null
+}

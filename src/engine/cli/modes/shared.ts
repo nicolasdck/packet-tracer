@@ -10,17 +10,26 @@ const TYPE_HELP: Record<string, string> = {
   Vlan: 'Catalyst Vlans',
 }
 
+interface InterfaceNodeOpts {
+  run: Handler
+  noRun?: Handler
+  /** Offer virtual interfaces (SVIs). */
+  includeVirtual: boolean
+  /** Accept interfaces that do not exist yet (new SVIs and subinterfaces). */
+  create?: boolean
+}
+
 /**
  * Interface selector: one keyword per interface type present on the device
  * ("GigabitEthernet", glued to its number as in "g0/0"), followed by the number.
  * The canonical interface name is stored in Args under "if".
  */
-export function interfaceNodes(run: Handler, includeVirtual: boolean): CmdNode[] {
+export function interfaceNodes({ run, noRun, includeVirtual, create = false }: InterfaceNodeOpts): CmdNode[] {
   return IF_TYPES.map((t) =>
     kw(t.full, TYPE_HELP[t.full] ?? t.full, {
       glue: true,
       when: (c) => deviceIfTypes(c, includeVirtual).includes(t),
-      children: [arg('if', ifNumber(t.full), `${t.full} interface number`, { run })],
+      children: [arg('if', ifNumber(t.full, create), `${t.full} interface number`, { run, noRun })],
     }),
   )
 }
