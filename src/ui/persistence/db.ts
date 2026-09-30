@@ -1,0 +1,60 @@
+import Dexie, { type EntityTable } from 'dexie'
+import { cloneProject, createProject, type Project } from '../../engine'
+
+class AppDB extends Dexie {
+  projects!: EntityTable<Project, 'id'>
+
+  constructor() {
+    super('mini-packet-tracer')
+    this.version(1).stores({ projects: 'id, updatedAt' })
+  }
+}
+
+export const db = new AppDB()
+
+export interface ProjectSummary {
+  id: string
+  name: string
+  updatedAt: number
+  deviceCount: number
+  linkCount: number
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const all = await db.projects.orderBy('updatedAt').reverse().toArray()
+  return all.map((p) => ({
+    id: p.id,
+    name: p.name,
+    updatedAt: p.updatedAt,
+    deviceCount: Object.keys(p.devices).length,
+    linkCount: Object.keys(p.links).length,
+  }))
+}
+
+export function getProject(id: string): Promise<Project | undefined> {
+  return db.projects.get(id)
+}
+
+export async function saveProject(project: Project): Promise<void> {
+  await db.projects.put({ ...project, updatedAt: Date.now() })
+}
+
+export async function createNewProject(name: string): Promise<Project> {
+  const project = createProject(crypto.randomUUID(), name, Date.now())
+  await db.projects.add(project)
+  return project
+}
+
+export async function renameProject(id: string, name: string): Promise<void> {
+  await db.projects.update(id, { name, updatedAt: Date.now() })
+}
+
+export async function duplicateProject(id: string): Promise<void> {
+  const source = await db.projects.get(id)
+  if (!source) return
+  await db.projects.add(cloneProject(source, crypto.randomUUID(), `${source.name} (copy)`, Date.now()))
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await db.projects.delete(id)
+}
