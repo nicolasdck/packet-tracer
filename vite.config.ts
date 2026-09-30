@@ -9,8 +9,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['apple-touch-icon.png'],
+      // The new version waits until the user taps "Refresh app" (see UpdateBanner).
+      registerType: 'prompt',
+      injectRegister: false,
       manifest: {
         name: 'Mini Packet Tracer',
         short_name: 'Packet Tracer',
