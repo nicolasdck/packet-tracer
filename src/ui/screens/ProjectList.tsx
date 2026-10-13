@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ImportError } from '../../engine'
 import { BottomSheet } from '../components/BottomSheet'
 import { ConfirmSheet } from '../components/ConfirmSheet'
+import { InstallBanner } from '../components/InstallBanner'
 import { TextPrompt } from '../components/TextPrompt'
 import {
   createNewProject,
@@ -104,6 +105,8 @@ export function ProjectList() {
             </button>
           </div>
         </header>
+
+        <InstallBanner />
 
         {notice && (
           <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${notice.error ? 'bg-red-950 text-red-300' : 'bg-emerald-950 text-emerald-300'}`}>
