@@ -1,4 +1,4 @@
-import { CATALOG, isIosKind } from '../model/catalog'
+import { findModel, isIosKind } from '../model/catalog'
 import { ifMedia } from '../model/ifname'
 import { deviceMac } from '../model/mac'
 import type {
@@ -8,6 +8,7 @@ import type {
   IfName,
   IosConfig,
   IosKind,
+  IosRuntime,
   Position,
   Project,
 } from '../model/types'
@@ -44,8 +45,9 @@ function defaultInterface(kind: IosKind, port: IfName): IfConfig {
   return cfg
 }
 
-export function defaultIosConfig(kind: IosKind): IosConfig {
-  const model = CATALOG[kind]
+/** Factory configuration of an IOS device: one interface per data port of its model. */
+export function defaultIosConfig(kind: IosKind, modelId?: string): IosConfig {
+  const model = findModel(kind, modelId)
   const interfaces: Record<IfName, IfConfig> = {}
   for (const port of model.ports) interfaces[port] = defaultInterface(kind, port)
   // Switches ship with the management SVI, shut down.
@@ -57,7 +59,18 @@ export function defaultIosConfig(kind: IosKind): IosConfig {
     interfaces,
     vlans: kind === 'router' ? {} : { 1: { name: 'default' } },
     ipRouting: kind === 'router',
+    staticRoutes: [],
+    dhcp: { pools: [], excluded: [] },
+    acls: {},
+    nat: { statics: [], pools: [], dynamic: [] },
+    ipv6Routing: false,
+    ipv6StaticRoutes: [],
   }
+}
+
+/** Learned tables of an IOS device, empty as after a boot. */
+export function emptyIosRuntime(): IosRuntime {
+  return { mac: [], arp: [], dhcpBindings: [], natTranslations: [], aclHits: {}, neighbors: [] }
 }
 
 /** Builds a factory-default device. `seq` must be unique within the project. */
@@ -66,23 +79,24 @@ export function createDevice(
   seq: number,
   label: string,
   position: Position,
+  modelId?: string,
 ): Device {
-  const model = CATALOG[kind]
+  const model = findModel(kind, modelId)
   const base = {
     id: `d${seq}`,
-    model: model.model,
+    model: model.id,
     label,
     position: { ...position },
-    ports: model.ports.map((name, i) => ({ name, mac: deviceMac(seq, i + 1) })),
+    ports: [...model.ports, model.consolePort].map((name, i) => ({ name, mac: deviceMac(seq, i + 1) })),
   }
   if (isIosKind(kind)) {
     return {
       ...base,
       kind,
-      running: defaultIosConfig(kind),
+      running: defaultIosConfig(kind, model.id),
       startup: null,
-      runtime: { mac: [], arp: [] },
+      runtime: emptyIosRuntime(),
     }
   }
-  return { ...base, kind, net: { mode: 'static' }, runtime: { arp: [] } }
+  return { ...base, kind, net: { mode: 'static' }, runtime: { arp: [], neighbors: [] } }
 }

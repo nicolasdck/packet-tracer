@@ -7,14 +7,16 @@ import { ConsoleView } from './ConsoleView'
 
 interface Props {
   project: Project
+  deviceId: string
   terminal: TerminalState
 }
 
 const NOTICE_MS = 1800
 
 /** Console of an IOS device. */
-export function Terminal({ project, terminal }: Props) {
-  const { submit, ctrlZ, help, complete, paste } = useCliStore()
+export function Terminal({ project, deviceId, terminal }: Props) {
+  const store = useCliStore()
+  const paste = (text: string) => store.paste(deviceId, text)
   const prompt = getPrompt(project, terminal.session)
   const [notice, setNotice] = useState<string | null>(null)
   /** Set when the clipboard cannot be read: the user pastes into a text box instead. */
@@ -52,10 +54,10 @@ export function Terminal({ project, terminal }: Props) {
         prompt={prompt.text}
         masked={prompt.masked}
         history={terminal.session.history}
-        onSubmit={submit}
-        onHelp={help}
-        onComplete={complete}
-        onCtrlZ={ctrlZ}
+        onSubmit={(line) => store.submit(deviceId, line)}
+        onHelp={(line) => store.help(deviceId, line)}
+        onComplete={(line) => store.complete(deviceId, line)}
+        onCtrlZ={() => store.ctrlZ(deviceId)}
         onCopy={onCopy}
         onPaste={onPaste}
       />

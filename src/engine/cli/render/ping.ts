@@ -1,4 +1,3 @@
-import { formatIpv4 } from '../../model/ipv4'
 import type { PingResult, TraceHop } from '../../sim/ping'
 
 export function iosPingOutput(target: string, result: PingResult): string[] {
@@ -20,13 +19,13 @@ export function iosTracerouteOutput(target: string, hops: TraceHop[]): string[] 
   const out = ['Type escape sequence to abort.', `Tracing the route to ${target}`, '']
   for (const hop of hops) {
     const parts: string[] = []
-    let last: number | null = null
+    let last: string | null = null
     for (const p of hop.probes) {
       if (p.kind === 'timeout') {
         parts.push('*')
         continue
       }
-      if (p.from !== last) parts.push(formatIpv4(p.from))
+      if (p.from !== last) parts.push(p.from)
       last = p.from
       parts.push(p.kind === 'reply' ? '0 msec' : '!H')
     }

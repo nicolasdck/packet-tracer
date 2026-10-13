@@ -1,5 +1,5 @@
 export * from './model/types'
-export { CATALOG, DEVICE_KINDS, isIosKind, isIosDevice, isHostDevice } from './model/catalog'
+export { CATALOG, MODELS, DEVICE_KINDS, findModel, modelOf, isIosKind, isIosDevice, isHostDevice } from './model/catalog'
 export type { DeviceModel } from './model/catalog'
 export { shortIfName, ifMedia } from './model/ifname'
 export { createProject, cloneProject } from './project/create'
@@ -16,6 +16,8 @@ export {
   canConnect,
   connect,
   disconnect,
+  isConsoleLink,
+  consoleTarget,
 } from './project/topology'
 export type { PortInfo } from './project/topology'
 export { interfaceStatus } from './sim/linkState'
@@ -40,3 +42,10 @@ export type { Route, RouteCode } from './sim/rib'
 export { migrateProject } from './project/migrate'
 export { EXPORT_FORMAT, ImportError, buildExport, parseImport, prepareImport } from './project/exchange'
 export type { ExportFile } from './project/exchange'
+export { setHostDhcp } from './host/config'
+export { dhcpSettle } from './sim/dhcp'
+export { hostAddress } from './sim/l3'
+export { validateHostIpv6, setHostIpv6 } from './host/config'
+export type { HostIpv6Input, HostIpv6Errors } from './host/config'
+export { hostV6 } from './sim/v6'
+export { formatIpv6 } from './model/ipv6'

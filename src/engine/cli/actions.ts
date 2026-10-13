@@ -2,8 +2,10 @@ import { current, isDraft } from 'immer'
 import { isSubinterface, sviVlan } from '../model/ifname'
 import type { IosConfig } from '../model/types'
 import { DEFAULT_VLANS, defaultVlanName } from '../model/vlans'
-import { defaultIosConfig } from '../project/create'
+import { defaultIosConfig, emptyIosRuntime } from '../project/create'
+import { formatIpv4 } from '../model/ipv4'
 import { interfaceStatus } from '../sim/linkState'
+import { computeOspf } from '../sim/ospf'
 import type { ExecCtx } from './types'
 
 export const CONFIGURED_MSG = '%SYS-5-CONFIG_I: Configured from console by console'
@@ -24,6 +26,8 @@ export function endConfig(ctx: ExecCtx) {
   ctx.session.ifContext = []
   ctx.session.lineContext = undefined
   ctx.session.vlanContext = undefined
+  ctx.session.poolContext = undefined
+  ctx.session.aclContext = undefined
   ctx.out(CONFIGURED_MSG)
 }
 
@@ -33,6 +37,8 @@ export function exitToConfig(ctx: ExecCtx) {
   ctx.session.ifContext = []
   ctx.session.lineContext = undefined
   ctx.session.vlanContext = undefined
+  ctx.session.poolContext = undefined
+  ctx.session.aclContext = undefined
 }
 
 /** exit / logout from EXEC: the console waits for RETURN. */
@@ -45,18 +51,20 @@ export function endSession(ctx: ExecCtx) {
 /** Reloads the startup-config (or factory defaults) and clears learned tables. */
 export function reloadDevice(ctx: ExecCtx) {
   const { device } = ctx
-  const running = device.startup ? snapshot(device.startup) : defaultIosConfig(device.kind)
+  const running = device.startup ? snapshot(device.startup) : defaultIosConfig(device.kind, device.model)
   for (const cfg of Object.values(running.interfaces)) {
     if (cfg.ip) cfg.ip.method = 'NVRAM'
   }
   // The VLAN database lives in vlan.dat, not in the startup-config.
   running.vlans = snapshot(device.running).vlans
   device.running = running
-  device.runtime = { mac: [], arp: [] }
+  device.runtime = emptyIosRuntime()
   ctx.session.mode = 'user'
   ctx.session.ifContext = []
   ctx.session.lineContext = undefined
   ctx.session.vlanContext = undefined
+  ctx.session.poolContext = undefined
+  ctx.session.aclContext = undefined
   ctx.session.pending = { kind: 'press-return' }
   ctx.out(
     '%SYS-5-RELOAD: Reload requested by console. Reload Reason: Reload Command.',
@@ -125,4 +133,30 @@ export function deleteInterface(ctx: ExecCtx, name: string) {
     return
   }
   delete ctx.device.running.interfaces[name]
+}
+
+/**
+ * Applies a change and prints the OSPF adjacency messages it causes on this
+ * router (neighbors reaching or leaving the FULL state).
+ */
+export function withOspfMessages(ctx: ExecCtx, change: () => void) {
+  const full = () =>
+    new Map(
+      (computeOspf(ctx.project).neighbors.get(ctx.device.id) ?? [])
+        .filter((n) => n.state.startsWith('FULL'))
+        .map((n) => [`${formatIpv4(n.routerId)} on ${n.iface}`, n]),
+    )
+  const processId = ctx.device.running.ospf?.processId
+  const before = full()
+  change()
+  const after = full()
+  const pid = ctx.device.running.ospf?.processId ?? processId
+  for (const key of after.keys()) {
+    if (!before.has(key)) ctx.out(`%OSPF-5-ADJCHG: Process ${pid}, Nbr ${key} from LOADING to FULL, Loading Done`, '')
+  }
+  for (const key of before.keys()) {
+    if (!after.has(key)) {
+      ctx.out(`%OSPF-5-ADJCHG: Process ${pid}, Nbr ${key} from FULL to DOWN, Neighbor Down: Interface down or detached`, '')
+    }
+  }
 }

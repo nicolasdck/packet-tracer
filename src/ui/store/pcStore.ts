@@ -10,7 +10,7 @@ export interface PcConsole {
   history: string[]
 }
 
-export type PcTab = 'config' | 'prompt'
+export type PcTab = 'config' | 'prompt' | 'terminal'
 
 interface PcState {
   consoles: Record<string, PcConsole>

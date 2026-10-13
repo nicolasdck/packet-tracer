@@ -2,7 +2,7 @@ import { isIosDevice } from '../model/catalog'
 import { parentIf } from '../model/ifname'
 import { baseMac } from '../model/mac'
 import { maskToPrefix, networkOf, parseIpv4 } from '../model/ipv4'
-import type { IfName, Project } from '../model/types'
+import type { HostDevice, IfName, Project } from '../model/types'
 import { interfaceStatus } from './linkState'
 
 /** An interface that can send and receive IP packets (up/up, with an address). */
@@ -19,6 +19,11 @@ export function macOf(project: Project, deviceId: string, iface: IfName): string
   const device = project.devices[deviceId]!
   const port = device.ports.find((p) => p.name === parentIf(iface))
   return port?.mac ?? baseMac(deviceId)
+}
+
+/** Address settings a host actually uses: its static configuration, or its DHCP lease. */
+export function hostAddress(host: HostDevice): { ip?: string; mask?: string; gateway?: string; dns?: string } {
+  return host.net.mode === 'dhcp' ? (host.runtime.lease ?? {}) : host.net
 }
 
 export function l3Interfaces(project: Project, deviceId: string): L3Interface[] {
@@ -38,7 +43,8 @@ export function l3Interfaces(project: Project, deviceId: string): L3Interface[] 
       if (!cfg.switchport) add(name, cfg.ip?.address, cfg.ip?.mask)
     }
   } else {
-    add(device.ports[0]!.name, device.net.ip, device.net.mask)
+    const address = hostAddress(device)
+    add(device.ports[0]!.name, address.ip, address.mask)
   }
   return out
 }

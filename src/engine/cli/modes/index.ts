@@ -5,7 +5,10 @@ import type { CmdNode, ModeDef, ModeId } from '../types'
 import { privNodes, userNodes } from './exec'
 import { configNodes } from './global'
 import { interfaceModeNodes, interfaceRangeNodes, subinterfaceModeNodes } from './interface'
+import { extendedAclModeNodes, standardAclModeNodes } from './acl'
+import { dhcpModeNodes } from './dhcp'
 import { lineModeNodes } from './line'
+import { routerModeNodes } from './routing'
 import { vlanModeNodes } from './vlan'
 
 const MODE_DEFS: Partial<Record<ModeId, ModeDef>> = {
@@ -16,6 +19,10 @@ const MODE_DEFS: Partial<Record<ModeId, ModeDef>> = {
   'config-if-range': { id: 'config-if-range', prompt: '(config-if-range)#', nodes: interfaceRangeNodes, parent: 'config' },
   'config-line': { id: 'config-line', prompt: '(config-line)#', nodes: lineModeNodes, parent: 'config' },
   'config-subif': { id: 'config-subif', prompt: '(config-subif)#', nodes: subinterfaceModeNodes, parent: 'config' },
+  'config-router': { id: 'config-router', prompt: '(config-router)#', nodes: routerModeNodes, parent: 'config' },
+  'dhcp-config': { id: 'dhcp-config', prompt: '(dhcp-config)#', nodes: dhcpModeNodes, parent: 'config' },
+  'config-std-nacl': { id: 'config-std-nacl', prompt: '(config-std-nacl)#', nodes: standardAclModeNodes, parent: 'config' },
+  'config-ext-nacl': { id: 'config-ext-nacl', prompt: '(config-ext-nacl)#', nodes: extendedAclModeNodes, parent: 'config' },
   'config-vlan': { id: 'config-vlan', prompt: '(config-vlan)#', nodes: vlanModeNodes, parent: 'config' },
 }
 

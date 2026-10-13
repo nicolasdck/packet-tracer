@@ -1,6 +1,6 @@
 import type { ArgSpec, CmdNode } from './types'
 
-type NodeOpts = Omit<CmdNode, 'kw' | 'arg' | 'name' | 'help'>
+type NodeOpts = Omit<CmdNode, 'kw' | 'arg' | 'help'>
 
 /** Keyword node. */
 export const kw = (keyword: string, help: string, opts: NodeOpts = {}): CmdNode => ({ kw: keyword, help, ...opts })

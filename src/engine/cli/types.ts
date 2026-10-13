@@ -11,6 +11,8 @@ export type ModeId =
   | 'config-router'
   | 'config-subif'
   | 'dhcp-config'
+  | 'config-std-nacl'
+  | 'config-ext-nacl'
 
 /**
  * An interactive question waiting for the next input line
@@ -23,6 +25,8 @@ export type Pending =
   | { kind: 'copy-destination' }
   | { kind: 'reload-save' }
   | { kind: 'reload-confirm' }
+  /** "Output Interface:" asked by a ping to a link-local IPv6 address. */
+  | { kind: 'ping6-interface'; target: string }
 
 /** A console session on one IOS device. Not persisted with the project. */
 export interface CliSession {
@@ -33,6 +37,10 @@ export interface CliSession {
   lineContext?: 'console' | 'vty'
   /** VLAN being configured (config-vlan). */
   vlanContext?: number
+  /** DHCP pool being configured (dhcp-config). */
+  poolContext?: string
+  /** Named access list being configured (config-std-nacl / config-ext-nacl). */
+  aclContext?: string
   pending: Pending | null
   history: string[]
 }
@@ -76,6 +84,8 @@ export interface CmdNode {
   arg?: ArgSpec
   /** Name under which the argument value is stored in Args. */
   name?: string
+  /** Keywords only: value stored under `name` when the keyword is matched. */
+  value?: ArgValue
   help: string
   /**
    * Keyword may be glued to the following number: "g0/0" = "g" + "0/0",

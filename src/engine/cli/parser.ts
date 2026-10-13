@@ -131,7 +131,9 @@ function walkTokens(roots: CmdNode[], tokens: Token[], line: string, c: NodeCtx)
     state.node = node
     if ((node as NegatingNode)[NEGATE]) state.negate = true
     if (m.split) toks.splice(i + 1, 0, m.split)
-    if (node.name !== undefined && m.value !== undefined) state.args[node.name] = m.value
+    // Arguments store what was typed; keywords can store a fixed value ("permit", "any"…).
+    const value = m.value ?? node.value
+    if (node.name !== undefined && value !== undefined) state.args[node.name] = value
     state.rest = !!node.arg?.rest
     state.children = node.children ?? []
   }

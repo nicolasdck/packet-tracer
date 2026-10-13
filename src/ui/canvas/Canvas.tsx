@@ -7,7 +7,7 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import { useMemo, useState } from 'react'
-import { interfaceStatus, isIosDevice, moveDevice, shortIfName, type Project } from '../../engine'
+import { interfaceStatus, isConsoleLink, isIosDevice, moveDevice, shortIfName, type Project } from '../../engine'
 import { useCliStore } from '../store/cliStore'
 import { usePcStore } from '../store/pcStore'
 import { useProjectStore } from '../store/projectStore'
@@ -43,6 +43,7 @@ function buildEdges(project: Project, selectedLinkId: string | null): LinkEdgeTy
         sourcePort: shortIfName(l.a.port),
         targetPort: shortIfName(l.b.port),
         offset,
+        console: isConsoleLink(l),
         sourceUp: isUp(l.a),
         targetUp: isUp(l.b),
         selected: l.id === selectedLinkId,

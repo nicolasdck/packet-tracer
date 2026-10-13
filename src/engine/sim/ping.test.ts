@@ -339,6 +339,21 @@ describe('PC command prompt', () => {
     expect(n.pc(pc0, '')).toBe('')
   })
 
+  it('arp -a lists the cache and arp -d clears it', () => {
+    const { n, pc0, pc1 } = flat()
+    expect(n.pc(pc0, 'arp -a')).toBe('No ARP Entries Found')
+    n.pc(pc0, 'ping 192.168.1.11')
+    const mac1 = n.project.devices[pc1]!.ports[0]!.mac
+    expect(n.pc(pc0, 'arp -a').split('\n')).toEqual([
+      '  Internet Address      Physical Address      Type',
+      `  192.168.1.11          ${mac1}        dynamic`,
+    ])
+    expect(n.pc(pc0, 'arp -d')).toBe('')
+    expect(n.pc(pc0, 'arp -a')).toBe('No ARP Entries Found')
+    expect(n.pc(pc0, 'arp')).toBe('Invalid Command.')
+    expect(n.pc(pc0, 'arp -x')).toBe('Invalid Command.')
+  })
+
   it('commands are case-insensitive', () => {
     const { n, pc0 } = flat()
     expect(replies(n.pc(pc0, 'PING 192.168.1.11'))).toHaveLength(4)

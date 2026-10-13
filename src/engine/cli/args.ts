@@ -1,5 +1,6 @@
 import { IF_TYPES, splitIfName } from '../model/ifname'
 import { ipv4ValidPrefix, parseIpv4 } from '../model/ipv4'
+import { parseIpv6, parseIpv6Prefix } from '../model/ipv6'
 import type { IfName } from '../model/types'
 import { MAX_VLAN, MIN_VLAN, formatVlanList, parseVlanList } from '../model/vlans'
 import type { ArgSpec, MatchResult, NodeCtx } from './types'
@@ -125,3 +126,24 @@ export const ifRange = (): ArgSpec => ({
     return { ok: true, value: names }
   },
 })
+
+/** IPv6 address: "2001:db8::1". Stored as typed; handlers normalize it. */
+export const ipv6 = (label = 'X:X:X:X::X'): ArgSpec => ({
+  label,
+  match: (text) => (parseIpv6(text) !== null ? { ok: true, value: text } : { ok: false, offset: 0 }),
+})
+
+/** IPv6 prefix: "2001:db8:1::/64". */
+export const ipv6Prefix = (label = 'X:X:X:X::X/<0-128>'): ArgSpec => ({
+  label,
+  match: (text) => (parseIpv6Prefix(text) !== null ? { ok: true, value: text } : { ok: false, offset: 0 }),
+})
+
+/** Interface named in free text ("g0/0", "GigabitEthernet0/0", "vlan 10"), or null. */
+export function resolveIfName(c: NodeCtx, text: string): IfName | null {
+  const m = /^([a-zA-Z]+)\s*([\d/.]+)$/.exec(text.trim())
+  if (!m) return null
+  const types = deviceIfTypes(c, true).filter((t) => t.full.toLowerCase().startsWith(m[1]!.toLowerCase()))
+  const name = types.length === 1 ? types[0]!.full + m[2] : null
+  return name !== null && c.device.running.interfaces[name] ? name : null
+}

@@ -1,8 +1,12 @@
 import { produce } from 'immer'
 import { isHostDevice } from '../model/catalog'
-import { formatIpv4, parseIpv4 } from '../model/ipv4'
+import { parseIpv4 } from '../model/ipv4'
 import type { HostDevice, Project } from '../model/types'
+import { dhcpRelease, dhcpRequest } from '../sim/dhcp'
+import { formatIpv6, parseIpv6 } from '../model/ipv6'
+import { hostAddress } from '../sim/l3'
 import { ping, traceroute, type PingResult, type TraceHop } from '../sim/ping'
+import { hostV6, ping6, traceroute6 } from '../sim/v6'
 
 export const HOST_PROMPT = 'C:\\>'
 
@@ -16,8 +20,8 @@ export interface HostResult {
 function pingOutput(target: string, result: PingResult): string[] {
   const out = ['', `Pinging ${target} with 32 bytes of data:`, '']
   for (const e of result.echoes) {
-    if (e.mark === '!') out.push(`Reply from ${formatIpv4(e.from)}: bytes=32 time<1ms TTL=${e.ttl}`)
-    else if (e.mark === 'U') out.push(`Reply from ${formatIpv4(e.from)}: Destination host unreachable.`)
+    if (e.mark === '!') out.push(`Reply from ${e.from}: bytes=32 time<1ms TTL=${e.ttl}`)
+    else if (e.mark === 'U') out.push(`Reply from ${e.from}: Destination host unreachable.`)
     else out.push('Request timed out.')
   }
   const sent = result.echoes.length
@@ -43,28 +47,70 @@ function tracertOutput(target: string, hops: TraceHop[]): string[] {
     const text = !answered
       ? 'Request timed out.'
       : answered.kind === 'unreachable'
-        ? `${formatIpv4(answered.from)} reports: Destination host unreachable.`
-        : formatIpv4(answered.from)
+        ? `${answered.from} reports: Destination host unreachable.`
+        : answered.from
     out.push(`${String(hop.ttl).padStart(3)}   ${cols}${text}`)
   }
   out.push('', 'Trace complete.', '')
   return out
 }
 
-function ipconfigOutput(host: HostDevice): string[] {
+function ipconfigOutput(project: Project, host: HostDevice, all: boolean): string[] {
+  const address = hostAddress(host)
+  const v6 = hostV6(project, host)
+  // Like Windows: the IPv6 gateway first, the IPv4 one below it.
+  const v4Gateway = address.gateway ?? '0.0.0.0'
+  const gateway =
+    v6.gateway === null
+      ? [`   Default Gateway.................: ${v4Gateway}`]
+      : [`   Default Gateway.................: ${formatIpv6(v6.gateway)}`, `${' '.repeat(37)}${v4Gateway}`]
   return [
     '',
     'FastEthernet0 Connection:(default port)',
     '',
     '   Connection-specific DNS Suffix..: ',
-    `   IPv4 Address....................: ${host.net.ip ?? '0.0.0.0'}`,
-    `   Subnet Mask.....................: ${host.net.mask ?? '0.0.0.0'}`,
-    `   Default Gateway.................: ${host.net.gateway ?? '0.0.0.0'}`,
+    ...(all
+      ? [
+          `   Physical Address................: ${host.ports[0]?.mac ?? ''}`,
+          `   DHCP Enabled....................: ${host.net.mode === 'dhcp' ? 'Yes' : 'No'}`,
+        ]
+      : []),
+    `   Link-local IPv6 Address.........: ${formatIpv6(v6.linkLocal)}`,
+    ...(v6.addresses.length
+      ? v6.addresses.map((a) => `   IPv6 Address....................: ${formatIpv6(a.ip)}`)
+      : ['   IPv6 Address....................: ::']),
+    `   IPv4 Address....................: ${address.ip ?? '0.0.0.0'}`,
+    `   Subnet Mask.....................: ${address.mask ?? '0.0.0.0'}`,
+    ...gateway,
+    ...(all ? [`   DNS Servers.....................: ${address.dns ?? '0.0.0.0'}`] : []),
     '',
   ]
 }
 
-/** Runs a command in the PC's command prompt: ping, tracert, ipconfig, cls/clear. */
+/** `ipconfig /renew` and `/release`, only meaningful in DHCP mode. */
+function dhcpCommand(project: Project, host: HostDevice, action: 'renew' | 'release'): HostResult {
+  if (host.net.mode !== 'dhcp') {
+    return { project, output: ['Port is not DHCP enabled, static IP address is configured.'] }
+  }
+  let ok = false
+  const next = produce(project, (draft) => {
+    dhcpRelease(draft, host.id)
+    if (action === 'renew') ok = dhcpRequest(draft, host.id)
+  })
+  if (action === 'renew' && !ok) return { project: next, output: ['DHCP request failed. '] }
+  return { project: next, output: ipconfigOutput(next, next.devices[host.id] as HostDevice, false) }
+}
+
+function arpOutput(host: HostDevice): string[] {
+  if (!host.runtime.arp.length) return ['No ARP Entries Found']
+  const row = (ip: string, mac: string, type: string) => `  ${ip.padEnd(22)}${mac.padEnd(22)}${type}`
+  return [
+    row('Internet Address', 'Physical Address', 'Type'),
+    ...host.runtime.arp.map((e) => row(e.ip, e.mac, 'dynamic')),
+  ]
+}
+
+/** Runs a command in the PC's command prompt: ping, tracert, ipconfig [/all|/renew|/release], arp -a/-d, cls/clear. */
 export function runHostCommand(project: Project, deviceId: string, line: string): HostResult {
   const device = project.devices[deviceId]
   if (!device || !isHostDevice(device)) throw new Error(`Not a host: ${deviceId}`)
@@ -74,9 +120,37 @@ export function runHostCommand(project: Project, deviceId: string, line: string)
 
   if ((cmd === 'cls' || cmd === 'clear') && !target) return { project, output: [], clear: true }
 
-  if (cmd === 'ipconfig' && !target) return { project, output: ipconfigOutput(device) }
+  if (cmd === 'ipconfig' && !extra.length) {
+    const option = target.toLowerCase()
+    if (!option) return { project, output: ipconfigOutput(project, device, false) }
+    if (option === '/all') return { project, output: ipconfigOutput(project, device, true) }
+    if (option === '/renew') return dhcpCommand(project, device, 'renew')
+    if (option === '/release') return dhcpCommand(project, device, 'release')
+  }
+
+  if (cmd === 'arp' && !extra.length) {
+    if (target === '-a') return { project, output: arpOutput(device) }
+    if (target === '-d') {
+      const next = produce(project, (draft) => {
+        draft.devices[deviceId]!.runtime.arp = []
+      })
+      return { project: next, output: [] }
+    }
+  }
 
   if ((cmd === 'ping' || cmd === 'tracert') && target && !extra.length) {
+    const dst6 = parseIpv6(target)
+    if (dst6 !== null) {
+      const text = formatIpv6(dst6)
+      let output: string[] = []
+      // Sending packets fills neighbor caches along the path.
+      const next = produce(project, (draft) => {
+        output = cmd === 'ping'
+          ? pingOutput(text, ping6(draft, deviceId, dst6, 4))
+          : tracertOutput(text, traceroute6(draft, deviceId, dst6, 3))
+      })
+      return { project: next, output }
+    }
     const dst = parseIpv4(target)
     if (dst === null) {
       return {
@@ -91,7 +165,7 @@ export function runHostCommand(project: Project, deviceId: string, line: string)
     const next = produce(project, (draft) => {
       output = cmd === 'ping'
         ? pingOutput(target, ping(draft, deviceId, dst, 4))
-        : tracertOutput(target, traceroute(draft, deviceId, dst, 3))
+        : tracertOutput(target, traceroute(draft, deviceId, dst, 3, 'icmp'))
     })
     return { project: next, output }
   }

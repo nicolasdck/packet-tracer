@@ -1,6 +1,6 @@
 import type { IfName } from './types'
 
-export type IfMedia = 'ethernet' | 'serial' | 'virtual'
+export type IfMedia = 'ethernet' | 'serial' | 'virtual' | 'console'
 
 export interface IfType {
   full: string
@@ -15,6 +15,9 @@ export const IF_TYPES: readonly IfType[] = [
   { full: 'FastEthernet', short: 'Fa', media: 'ethernet', bandwidthKbps: 100_000 },
   { full: 'Serial', short: 'Se', media: 'serial', bandwidthKbps: 1544 },
   { full: 'Vlan', short: 'Vl', media: 'virtual', bandwidthKbps: 100_000 },
+  // Management ports for the console cable: no data traffic, no interface configuration.
+  { full: 'Console', short: 'Con', media: 'console', bandwidthKbps: 0 },
+  { full: 'RS232', short: 'RS232', media: 'console', bandwidthKbps: 0 },
 ]
 
 /** Splits "GigabitEthernet0/0" into its type and number ("0/0"). */

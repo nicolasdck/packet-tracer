@@ -1,4 +1,4 @@
-import { CATALOG, type Project } from '../../engine'
+import { modelOf, type Project } from '../../engine'
 import { useCliStore } from '../store/cliStore'
 import { Terminal } from '../terminal/Terminal'
 import { useVisualViewport } from '../terminal/useVisualViewport'
@@ -23,10 +23,10 @@ export function DeviceCli({ project }: { project: Project }) {
           ←
         </button>
         <h1 className="truncate font-semibold">{device.label}</h1>
-        <span className="text-sm text-slate-400">{CATALOG[device.kind].displayName}</span>
+        <span className="text-sm text-slate-400">{modelOf(device).displayName}</span>
       </header>
       {/* Keyed by device so input and history browsing reset when switching consoles. */}
-      <Terminal key={device.id} project={project} terminal={terminal} />
+      <Terminal key={device.id} project={project} deviceId={device.id} terminal={terminal} />
     </div>
   )
 }

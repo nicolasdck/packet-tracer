@@ -21,21 +21,27 @@ export interface Terminal {
   lastOutput: string[]
 }
 
+/**
+ * Console sessions, one per IOS device. The same session is reached by
+ * tapping the device and through a PC's Terminal tab (console cable).
+ */
 interface CliState {
   terminals: Record<string, Terminal>
   /** Device whose console is shown full screen. */
   openDeviceId: string | null
+  /** Starts the console session of a device if it has none yet. */
+  ensure(deviceId: string): void
   open(deviceId: string): void
   close(): void
-  submit(line: string): void
-  ctrlZ(): void
-  help(line: string): void
-  complete(line: string): string | null
+  submit(deviceId: string, line: string): void
+  ctrlZ(deviceId: string): void
+  help(deviceId: string, line: string): void
+  complete(deviceId: string, line: string): string | null
   /**
    * Types pasted text: every complete line is executed in order, like a real
    * terminal. Returns the trailing text without newline, to leave in the input.
    */
-  paste(text: string): string
+  paste(deviceId: string, text: string): string
   forget(deviceId: string): void
   reset(): void
 }
@@ -59,59 +65,57 @@ export const useCliStore = create<CliState>()((set, get) => {
     })
   }
 
-  function active(): { deviceId: string; terminal: Terminal } | null {
-    const deviceId = get().openDeviceId
-    const terminal = deviceId ? get().terminals[deviceId] : undefined
-    return deviceId && terminal ? { deviceId, terminal } : null
-  }
-
   return {
     terminals: {},
     openDeviceId: null,
 
-    open: (deviceId) => {
+    ensure: (deviceId) => {
       if (!get().terminals[deviceId]) commit(deviceId, [], openSession(currentProject(), deviceId))
+    },
+
+    open: (deviceId) => {
+      get().ensure(deviceId)
       set({ openDeviceId: deviceId })
     },
 
     close: () => set({ openDeviceId: null }),
 
-    submit: (line) => {
-      const a = active()
-      if (!a) return
+    submit: (deviceId, line) => {
+      const terminal = get().terminals[deviceId]
+      if (!terminal) return
       const project = currentProject()
-      const prompt = getPrompt(project, a.terminal.session)
+      const prompt = getPrompt(project, terminal.session)
       const echo = prompt.text + (prompt.masked ? '' : line)
-      commit(a.deviceId, [echo], executeLine(project, a.terminal.session, line))
+      commit(deviceId, [echo], executeLine(project, terminal.session, line))
     },
 
-    ctrlZ: () => {
-      const a = active()
-      if (!a) return
+    ctrlZ: (deviceId) => {
+      const terminal = get().terminals[deviceId]
+      if (!terminal) return
       const project = currentProject()
-      const prompt = getPrompt(project, a.terminal.session)
-      commit(a.deviceId, [prompt.text + '^Z'], ctrlZ(project, a.terminal.session))
+      const prompt = getPrompt(project, terminal.session)
+      commit(deviceId, [prompt.text + '^Z'], ctrlZ(project, terminal.session))
     },
 
-    help: (line) => {
-      const a = active()
-      if (!a) return
+    help: (deviceId, line) => {
+      const terminal = get().terminals[deviceId]
+      if (!terminal) return
       const project = currentProject()
-      const prompt = getPrompt(project, a.terminal.session)
+      const prompt = getPrompt(project, terminal.session)
       if (prompt.masked) return
-      const output = cliHelp(project, a.terminal.session, line)
-      commit(a.deviceId, [prompt.text + line + '?'], { project, session: a.terminal.session, output })
+      const output = cliHelp(project, terminal.session, line)
+      commit(deviceId, [prompt.text + line + '?'], { project, session: terminal.session, output })
     },
 
-    complete: (line) => {
-      const a = active()
-      return a ? cliComplete(currentProject(), a.terminal.session, line) : null
+    complete: (deviceId, line) => {
+      const terminal = get().terminals[deviceId]
+      return terminal ? cliComplete(currentProject(), terminal.session, line) : null
     },
 
-    paste: (text) => {
+    paste: (deviceId, text) => {
       const lines = text.replace(/\r\n?/g, '\n').split('\n')
       const rest = lines.pop() ?? ''
-      for (const line of lines) get().submit(line)
+      for (const line of lines) get().submit(deviceId, line)
       return rest
     },
 

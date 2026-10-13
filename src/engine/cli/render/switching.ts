@@ -1,3 +1,4 @@
+import { modelOf } from '../../model/catalog'
 import { shortIfName } from '../../model/ifname'
 import { formatIpv4, parseIpv4 } from '../../model/ipv4'
 import type { IosDevice, Project } from '../../model/types'
@@ -44,7 +45,7 @@ export function showInterfacesTrunk(project: Project, device: IosDevice): string
   for (const port of trunks) {
     const s = sp(port)
     const mode = s.mode === 'trunk' ? 'on' : 'auto'
-    const encap = device.kind === 'switch-l3' && !s.trunkEncapsulation ? 'n-802.1q' : '802.1q'
+    const encap = modelOf(device).trunkEncapsulation && !s.trunkEncapsulation ? 'n-802.1q' : '802.1q'
     out.push(`${col(shortIfName(port), 12)}${col(mode, 13)}${col(encap, 15)}${col('trunking', 14)}${s.nativeVlan}`)
   }
   const section = (title: string, value: (port: string) => string) => {

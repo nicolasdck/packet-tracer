@@ -4,9 +4,15 @@ import { deleteInterface, deleteVlan, endConfig, ensureVlan, enterInterface } fr
 import { ifRange, int, line, word } from '../args'
 import { arg, kw } from '../dsl'
 import type { CmdNode, ExecCtx, NodeCtx } from '../types'
+import { accessListNode, ipAccessListNode } from './acl'
+import { ipDhcpNode } from './dhcp'
+import { ipv6GlobalNode } from './ipv6'
+import { ipNatNode } from './nat'
+import { ipRouteNode, routerNode } from './routing'
 import { interfaceNodes } from './shared'
 
 const isSwitch = (c: NodeCtx) => c.device.kind !== 'router'
+const canRoute = (c: NodeCtx) => c.device.kind !== 'switch-l2'
 
 const HOSTNAME_RE = /^[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
 
@@ -144,9 +150,14 @@ export const configNodes: CmdNode[] = [
     ],
   }),
   kw('ip', 'Global IP configuration subcommands', {
-    when: (c) => c.device.kind !== 'switch-l2',
     children: [
+      ipAccessListNode,
+      ipDhcpNode,
+      ipNatNode,
+      // Routing commands do not exist on a layer 2 switch.
+      { ...ipRouteNode, when: canRoute },
       kw('routing', 'Enable IP routing', {
+        when: canRoute,
         run: (ctx) => {
           ctx.device.running.ipRouting = true
         },
@@ -156,5 +167,8 @@ export const configNodes: CmdNode[] = [
       }),
     ],
   }),
+  ipv6GlobalNode,
+  routerNode,
+  accessListNode,
   kw('exit', 'Exit from configure mode', { run: endConfig }),
 ]

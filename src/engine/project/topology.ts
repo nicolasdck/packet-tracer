@@ -1,5 +1,5 @@
 import { produce } from 'immer'
-import { CATALOG } from '../model/catalog'
+import { CATALOG, findModel } from '../model/catalog'
 import { ifMedia } from '../model/ifname'
 import type { Device, DeviceKind, IfName, Link, LinkEnd, Position, Project } from '../model/types'
 import { createDevice } from './create'
@@ -31,9 +31,11 @@ export function addDevice(
   project: Project,
   kind: DeviceKind,
   position: Position,
+  modelId?: string,
 ): { project: Project; deviceId: string } {
   const seq = project.seq + 1
-  const device = createDevice(kind, seq, nextLabel(project, CATALOG[kind].labelPrefix), position)
+  const model = findModel(kind, modelId)
+  const device = createDevice(kind, seq, nextLabel(project, model.labelPrefix), position, model.id)
   const next = produce(project, (draft) => {
     draft.seq = seq
     draft.devices[device.id] = device
@@ -110,8 +112,26 @@ export function canConnect(project: Project, a: LinkEnd, b: LinkEnd): string | n
   if (!devB.ports.some((p) => p.name === b.port)) return `Unknown port ${b.port} on ${devB.label}`
   if (linkAt(project, a)) return `${devA.label} ${a.port} is already in use`
   if (linkAt(project, b)) return `${devB.label} ${b.port} is already in use`
-  if (ifMedia(a.port) !== ifMedia(b.port)) return 'Incompatible ports (serial ↔ ethernet)'
+  if (ifMedia(a.port) !== ifMedia(b.port)) return 'Incompatible ports'
+  // A console cable goes from a PC's RS232 port to a device's Console port.
+  if (ifMedia(a.port) === 'console' && a.port === b.port) {
+    return 'A console cable links an RS232 port to a Console port'
+  }
   return null
+}
+
+/** True for a console cable (management only, carries no network traffic). */
+export function isConsoleLink(link: Link): boolean {
+  return ifMedia(link.a.port) === 'console'
+}
+
+/** The router or switch a host's RS232 port is cabled to, if any. */
+export function consoleTarget(project: Project, hostId: string): string | null {
+  const host = project.devices[hostId]
+  if (!host) return null
+  const link = linkAt(project, { deviceId: hostId, port: CATALOG[host.kind].consolePort })
+  if (!link) return null
+  return link.a.deviceId === hostId ? link.b.deviceId : link.a.deviceId
 }
 
 /** Links two free, compatible ports. On serial links, end `a` is the DCE. */

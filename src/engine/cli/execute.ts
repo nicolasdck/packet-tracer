@@ -1,5 +1,9 @@
 import { produce } from 'immer'
 import { isIosDevice } from '../model/catalog'
+import { parseIpv6 } from '../model/ipv6'
+import { ping6 } from '../sim/v6'
+import { resolveIfName } from './args'
+import { iosPingOutput } from './render/ping'
 import type { IosDevice, Project } from '../model/types'
 import { CONFIGURED_MSG, endConfig, reloadDevice, saveConfig } from './actions'
 import { modeDef, rootsFor } from './modes'
@@ -44,6 +48,8 @@ export function getPrompt(project: Project, session: CliSession): Prompt {
       return { text: 'System configuration has been modified. Save? [yes/no]: ', masked: false }
     case 'reload-confirm':
       return { text: 'Proceed with reload? [confirm]', masked: false }
+    case 'ping6-interface':
+      return { text: 'Output Interface: ', masked: false }
     default:
       return { text: device.running.hostname + modeDef(session.mode).prompt, masked: false }
   }
@@ -145,6 +151,14 @@ const answerPending = (input: string): Handler => (ctx) => {
       if (answer === '' || /^y/i.test(answer)) reloadDevice(ctx)
       else ctx.out('')
       return
+    case 'ping6-interface': {
+      session.pending = null
+      const iface = resolveIfName({ project: ctx.project, device, session }, answer)
+      if (!iface) return ctx.out('% Invalid interface', '')
+      const address = parseIpv6(pending.target)!
+      ctx.out(...iosPingOutput(pending.target, ping6(ctx.project, device.id, address, 5, iface)))
+      return
+    }
   }
 }
 
@@ -184,7 +198,7 @@ export function executeLine(project: Project, session: CliSession, line: string)
     const fallback = parse(rootsFor(parent), line, c)
     if (fallback.ok) {
       result = fallback
-      s = { ...withHistory, mode: parent, ifContext: [], lineContext: undefined, vlanContext: undefined }
+      s = { ...withHistory, mode: parent, ifContext: [], lineContext: undefined, vlanContext: undefined, poolContext: undefined, aclContext: undefined }
     }
   }
 

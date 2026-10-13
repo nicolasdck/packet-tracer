@@ -2,6 +2,9 @@ import { ifMedia, isSubinterface, parentIf, sviVlan } from '../../model/ifname'
 import type { IfConfig, IfName, IosConfig, IosDevice, LineConfig, SwitchportConfig } from '../../model/types'
 import { formatVlanList } from '../../model/vlans'
 import { type5, type7 } from '../crypto'
+import { aclConfigLines, orderedAcls } from './acl'
+import { ipv6InterfaceLines, ipv6RouteLines } from './ipv6'
+import { dhcpConfigLines, natConfigLines } from './services'
 
 const IOS_VERSION: Record<IosDevice['kind'], string> = {
   router: '15.1',
@@ -54,6 +57,11 @@ function interfaceLines(device: IosDevice, name: IfName, cfg: IfConfig): string[
     if (device.kind === 'switch-l3' && isPort) out.push(' no switchport')
     out.push(cfg.ip ? ` ip address ${cfg.ip.address} ${cfg.ip.mask}` : ' no ip address')
   }
+  for (const helper of cfg.helperAddresses ?? []) out.push(` ip helper-address ${helper}`)
+  if (cfg.accessGroup?.in) out.push(` ip access-group ${cfg.accessGroup.in} in`)
+  if (cfg.accessGroup?.out) out.push(` ip access-group ${cfg.accessGroup.out} out`)
+  if (cfg.nat) out.push(` ip nat ${cfg.nat}`)
+  out.push(...ipv6InterfaceLines(cfg))
   if (isPort && ifMedia(name) === 'ethernet') {
     // Routers always print duplex/speed; switches only when not auto.
     if (isRouter || cfg.duplex !== 'auto') out.push(` duplex ${cfg.duplex ?? 'auto'}`)
@@ -88,14 +96,32 @@ export function renderConfig(device: IosDevice, config: IosConfig): string[] {
     '!',
   ]
   if (config.enableSecret !== undefined) out.push(`enable secret 5 ${type5(config.enableSecret)}`, '!')
-  out.push('!', '!')
+  out.push('!', ...dhcpConfigLines(config), '!')
   if (device.kind === 'switch-l3' && config.ipRouting) out.push('ip routing', '!')
+  if (config.ipv6Routing) out.push('ipv6 unicast-routing', '!')
   if (device.kind === 'router' && !config.ipRouting) out.push('no ip routing', '!')
   if (isSwitch) out.push('spanning-tree mode pvst', 'spanning-tree extend system-id', '!')
   for (const name of orderedInterfaces(device, config)) {
     out.push(...interfaceLines(device, name, config.interfaces[name]!))
   }
-  if (!isSwitch) out.push('ip classless', '!', 'ip flow-export version 9', '!')
+  if (config.ospf) {
+    out.push(`router ospf ${config.ospf.processId}`)
+    if (config.ospf.routerId) out.push(` router-id ${config.ospf.routerId}`)
+    out.push(' log-adjacency-changes')
+    for (const name of config.ospf.passiveInterfaces) out.push(` passive-interface ${name}`)
+    for (const n of config.ospf.networks) out.push(` network ${n.address} ${n.wildcard} area ${n.area}`)
+    out.push('!')
+  }
+  if (!isSwitch) out.push('ip classless')
+  for (const r of config.staticRoutes) {
+    const target = [r.iface, r.nextHop].filter(Boolean).join(' ')
+    out.push(`ip route ${r.network} ${r.mask} ${target}${r.distance !== 1 ? ` ${r.distance}` : ''}`)
+  }
+  out.push(...natConfigLines(config), ...ipv6RouteLines(config))
+  if (!isSwitch) out.push('!', 'ip flow-export version 9', '!')
+  else if (config.staticRoutes.length) out.push('!')
+  const acls = aclConfigLines(orderedAcls({ ...device, running: config }))
+  if (acls.length) out.push(...acls, '!')
   out.push('!')
   if (config.bannerMotd) {
     out.push(...`banner motd ^C${config.bannerMotd.text}^C`.split('\n'), '!')

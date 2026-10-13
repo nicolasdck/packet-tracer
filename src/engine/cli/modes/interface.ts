@@ -1,3 +1,4 @@
+import { modelOf } from '../../model/catalog'
 import { ifMedia, isSubinterface, splitIfName } from '../../model/ifname'
 import {
   broadcastOf,
@@ -11,10 +12,11 @@ import {
 import type { Duplex, IfConfig, Speed, SwitchportConfig } from '../../model/types'
 import { MAX_VLAN, MIN_VLAN, allVlans, parseVlanList } from '../../model/vlans'
 import { linkAt } from '../../project/topology'
-import { ensureVlan, exitToConfig, withLinkMessages } from '../actions'
-import { int, ipv4, line, vlanList } from '../args'
+import { ensureVlan, exitToConfig, withLinkMessages, withOspfMessages } from '../actions'
+import { int, ipv4, line, vlanList, word } from '../args'
 import { arg, kw } from '../dsl'
 import type { CmdNode, ExecCtx, NodeCtx } from '../types'
+import { ipv6InterfaceNode } from './ipv6'
 
 /** Accepted `clock rate` values (bit/s), as listed by IOS. */
 export const CLOCK_RATES = [
@@ -44,7 +46,9 @@ function eachIf(ctx: ExecCtx, fn: (cfg: IfConfig) => void) {
 }
 
 function setShutdown(ctx: ExecCtx, shutdown: boolean) {
-  withLinkMessages(ctx, ctx.session.ifContext, () => eachIf(ctx, (cfg) => (cfg.shutdown = shutdown)))
+  withOspfMessages(ctx, () =>
+    withLinkMessages(ctx, ctx.session.ifContext, () => eachIf(ctx, (cfg) => (cfg.shutdown = shutdown))),
+  )
 }
 
 function setIpAddress(ctx: ExecCtx, address: string, mask: string) {
@@ -134,6 +138,51 @@ const ipNode = kw('ip', 'Interface Internet Protocol config commands', {
   // A 3560 switch port offers the command but rejects it (L2 link).
   when: (c) => isRouted(c) || isMultilayer(c),
   children: [
+    kw('helper-address', 'Specify a destination address for UDP broadcasts', {
+      children: [
+        arg('helper', ipv4(), 'IP destination address', {
+          run: (ctx, args) =>
+            eachIf(ctx, (cfg) => {
+              const list = (cfg.helperAddresses ??= [])
+              if (!list.includes(String(args.helper))) list.push(String(args.helper))
+            }),
+          noRun: (ctx, args) =>
+            eachIf(ctx, (cfg) => {
+              cfg.helperAddresses = (cfg.helperAddresses ?? []).filter((h) => h !== args.helper)
+              if (!cfg.helperAddresses.length) delete cfg.helperAddresses
+            }),
+        }),
+      ],
+    }),
+    kw('access-group', 'Specify access control for packets', {
+      children: [
+        arg('acl', word(), 'Access-list number or name', {
+          children: (['in', 'out'] as const).map((direction) =>
+            kw(direction, `${direction}bound packets`, {
+              run: (ctx, args) =>
+                eachIf(ctx, (cfg) => {
+                  cfg.accessGroup = { ...cfg.accessGroup, [direction]: String(args.acl) }
+                }),
+              noRun: (ctx) =>
+                eachIf(ctx, (cfg) => {
+                  if (!cfg.accessGroup) return
+                  delete cfg.accessGroup[direction]
+                  if (!cfg.accessGroup.in && !cfg.accessGroup.out) delete cfg.accessGroup
+                }),
+            }),
+          ),
+        }),
+      ],
+    }),
+    kw('nat', 'NAT interface commands', {
+      when: (c) => c.device.kind === 'router',
+      children: (['inside', 'outside'] as const).map((side) =>
+        kw(side, `${side === 'inside' ? 'Inside' : 'Outside'} interface for address translation`, {
+          run: (ctx) => eachIf(ctx, (cfg) => (cfg.nat = side)),
+          noRun: (ctx) => eachIf(ctx, (cfg) => delete cfg.nat),
+        }),
+      ),
+    }),
     kw('address', 'Set the IP address of an interface', {
       noRun: (ctx) => eachIf(ctx, (cfg) => delete cfg.ip),
       children: [
@@ -172,7 +221,7 @@ function eachSwitchport(ctx: ExecCtx, fn: (sp: SwitchportConfig) => void) {
 }
 
 function setMode(ctx: ExecCtx, mode: 'access' | 'trunk') {
-  if (mode === 'trunk' && ctx.device.kind === 'switch-l3') {
+  if (mode === 'trunk' && modelOf(ctx.device).trunkEncapsulation) {
     const auto = ctx.session.ifContext.some((n) => !ctx.device.running.interfaces[n]?.switchport?.trunkEncapsulation)
     if (auto) {
       ctx.out('Command rejected: An interface whose trunk encapsulation is "Auto" can not be configured to "trunk" mode.')
@@ -270,7 +319,7 @@ const switchportNode = kw('switchport', 'Set switching mode characteristics', {
           ],
         }),
         kw('encapsulation', 'Set trunking encapsulation when interface is in trunking mode', {
-          when: isMultilayer,
+          when: (c) => !!modelOf(c.device).trunkEncapsulation,
           noRun: (ctx) => eachSwitchport(ctx, (sp) => delete sp.trunkEncapsulation),
           children: [
             kw('dot1q', 'Interface uses only 802.1q trunking encapsulation when trunking', {
@@ -309,6 +358,7 @@ export const interfaceModeNodes: CmdNode[] = [
   descriptionNode,
   duplexNode,
   ipNode,
+  ipv6InterfaceNode,
   shutdownNode,
   speedNode,
   switchportNode,
@@ -324,4 +374,11 @@ export const interfaceRangeNodes: CmdNode[] = [
   exitNode,
 ]
 
-export const subinterfaceModeNodes: CmdNode[] = [descriptionNode, encapsulationNode, ipNode, shutdownNode, exitNode]
+export const subinterfaceModeNodes: CmdNode[] = [
+  descriptionNode,
+  encapsulationNode,
+  ipNode,
+  ipv6InterfaceNode,
+  shutdownNode,
+  exitNode,
+]

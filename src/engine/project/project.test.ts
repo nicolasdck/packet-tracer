@@ -87,12 +87,12 @@ describe('addDevice', () => {
     expect(ios(project.devices[deviceId])).toMatchObject({ model: '3560', label: 'Multilayer Switch0' })
   })
 
-  it('creates a PC in static mode with one port', () => {
+  it('creates a PC in static mode with one network port and an RS232 port', () => {
     const { project, deviceId } = addDevice(empty(), 'pc', ORIGIN)
     const pc = host(project.devices[deviceId])
     expect(pc.label).toBe('PC0')
     expect(pc.net).toEqual({ mode: 'static' })
-    expect(pc.ports.map((port) => port.name)).toEqual(['FastEthernet0'])
+    expect(pc.ports.map((port) => port.name)).toEqual(['FastEthernet0', 'RS232'])
   })
 
   it('numbers labels per type and reuses the lowest free index', () => {
@@ -209,10 +209,11 @@ describe('listPorts / disconnect / removeDevice', () => {
   it('lists ports with their link', () => {
     const { p, s0, l1, l2 } = linked()
     const ports = listPorts(p, s0)
-    expect(ports).toHaveLength(26)
+    expect(ports).toHaveLength(27)
     expect(ports[0]).toEqual({ name: 'FastEthernet0/1', linkId: l2 })
     expect(ports[1]).toEqual({ name: 'FastEthernet0/2' })
     expect(ports[25]).toEqual({ name: 'GigabitEthernet0/2' })
+    expect(ports[26]).toEqual({ name: 'Console' })
     expect(ports[24]).toEqual({ name: 'GigabitEthernet0/1', linkId: l1 })
   })
 

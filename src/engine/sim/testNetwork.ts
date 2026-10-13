@@ -1,9 +1,10 @@
 import { TestConsole } from '../cli/testing'
-import { setHostNet } from '../host/config'
+import { setHostDhcp, setHostIpv6, setHostNet } from '../host/config'
 import { runHostCommand } from '../host/terminal'
 import type { DeviceKind, IfName, Project } from '../model/types'
 import { createProject } from '../project/create'
 import { addDevice, connect } from '../project/topology'
+import { dhcpSettle } from './dhcp'
 
 /** Small DSL to build a network and talk to its devices. */
 export function network() {
@@ -39,6 +40,18 @@ export function network() {
     },
     host(id: string, ip: string, mask: string, gateway = '') {
       p = setHostNet(p, id, { ip, mask, gateway })
+    },
+    /** IPv6 settings of a host: SLAAC, or a static "address/prefix" and gateway. */
+    host6(id: string, mode: 'auto' | 'static', address = '', gateway = '') {
+      p = setHostIpv6(p, id, { mode, address, gateway })
+    },
+    /** Switches a host to DHCP (it asks for an address at once). */
+    dhcp(id: string) {
+      p = setHostDhcp(p, id)
+    },
+    /** Lets DHCP clients without a lease retry, as the UI does after each change. */
+    settle() {
+      p = dhcpSettle(p)
     },
     /** Runs a command in a PC's command prompt. */
     pc(id: string, line: string) {
