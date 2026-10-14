@@ -3,6 +3,7 @@ import { parentIf } from '../model/ifname'
 import { baseMac } from '../model/mac'
 import { maskToPrefix, networkOf, parseIpv4 } from '../model/ipv4'
 import type { HostDevice, IfName, Project } from '../model/types'
+import { hostNic } from '../wireless/association'
 import { interfaceStatus } from './linkState'
 
 /** An interface that can send and receive IP packets (up/up, with an address). */
@@ -44,7 +45,7 @@ export function l3Interfaces(project: Project, deviceId: string): L3Interface[] 
     }
   } else {
     const address = hostAddress(device)
-    add(device.ports[0]!.name, address.ip, address.mask)
+    add(hostNic(project, device).name, address.ip, address.mask)
   }
   return out
 }

@@ -8,6 +8,9 @@ import {
   isHostDevice,
   setHostDhcp,
   setHostIpv6,
+  setHostWifi,
+  isWirelessLink,
+  validateWifi,
   setHostNet,
   validateHostIpv6,
   validateHostNet,
@@ -22,6 +25,7 @@ import { usePcStore, type PcTab } from '../store/pcStore'
 import { useProjectStore } from '../store/projectStore'
 import { ConsoleView } from '../terminal/ConsoleView'
 import { Terminal } from '../terminal/Terminal'
+import { ProgrammingTab } from './ProgrammingTab'
 import { useVisualViewport } from '../terminal/useVisualViewport'
 
 const FIELDS: { key: keyof HostNetInput; label: string }[] = [
@@ -232,6 +236,93 @@ function Ipv6Form({ project, device }: { project: Project; device: HostDevice })
   )
 }
 
+/** Wireless card of a laptop: the network to join. Association is automatic once SSID and key match. */
+function WifiForm({ project, device }: { project: Project; device: HostDevice }) {
+  const apply = useProjectStore((s) => s.apply)
+  const current = device.net.wifi
+  const [ssid, setSsid] = useState(current?.ssid ?? '')
+  const [security, setSecurity] = useState<'open' | 'wpa2'>(current?.security ?? 'open')
+  const [passphrase, setPassphrase] = useState(current?.passphrase ?? '')
+  const [error, setError] = useState<string | null>(null)
+
+  const link = Object.values(project.links).find(
+    (l) => isWirelessLink(l) && (l.a.deviceId === device.id || l.b.deviceId === device.id),
+  )
+  const ap = link && project.devices[link.a.deviceId === device.id ? link.b.deviceId : link.a.deviceId]
+
+  function connect(e: FormEvent) {
+    e.preventDefault()
+    const wifi = { ssid, security, ...(security === 'wpa2' ? { passphrase } : {}) }
+    const found = Object.values(validateWifi(wifi))[0]
+    if (found) return setError(found)
+    setError(null)
+    apply((p) => setHostWifi(p, device.id, wifi))
+  }
+
+  return (
+    <form onSubmit={connect} className="mx-auto flex w-full max-w-md flex-col gap-4 border-t border-slate-800 p-4">
+      <div className="text-sm text-slate-400">Wireless0 · Wi-Fi</div>
+      <p className={`rounded-lg px-3 py-2 text-sm ${ap ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-300'}`}>
+        {ap
+          ? `Connected to "${current?.ssid}" (${ap.label}). The laptop now uses its wireless card.`
+          : current
+            ? `No access point accepts "${current.ssid}" with this key. The laptop uses its Ethernet port.`
+            : 'Not connected. The laptop uses its Ethernet port.'}
+      </p>
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-slate-300">Network name (SSID)</span>
+        <input
+          value={ssid}
+          autoCapitalize="off"
+          autoComplete="off"
+          onChange={(e) => setSsid(e.target.value)}
+          className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2.5 text-slate-100 outline-none focus:border-sky-500"
+        />
+      </label>
+      <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+        {(['open', 'wpa2'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={security === id}
+            onClick={() => setSecurity(id)}
+            className={`flex-1 rounded-md py-2 text-sm font-medium ${security === id ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+          >
+            {id === 'open' ? 'Open' : 'WPA2 Personal'}
+          </button>
+        ))}
+      </div>
+      {security === 'wpa2' && (
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-slate-300">Passphrase</span>
+          <input
+            value={passphrase}
+            autoCapitalize="off"
+            autoComplete="off"
+            onChange={(e) => setPassphrase(e.target.value)}
+            className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2.5 text-slate-100 outline-none focus:border-sky-500"
+          />
+        </label>
+      )}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      <div className="flex gap-2">
+        <button type="submit" className="flex-1 rounded-lg bg-sky-600 py-2.5 font-medium text-white hover:bg-sky-500">
+          Connect
+        </button>
+        {current && (
+          <button
+            type="button"
+            onClick={() => apply((p) => setHostWifi(p, device.id, null))}
+            className="rounded-lg bg-slate-700 px-4 py-2.5 text-slate-100 hover:bg-slate-600"
+          >
+            Disconnect
+          </button>
+        )}
+      </div>
+    </form>
+  )
+}
+
 interface StaticFieldsProps {
   values: HostNetInput
   errors: HostNetErrors
@@ -282,8 +373,9 @@ function Tabs({ tab, setTab }: { tab: PcTab; setTab(tab: PcTab): void }) {
   return (
     <div className="flex border-b border-slate-800">
       {item('config', 'IP Config')}
-      {item('prompt', 'Command Prompt')}
+      {item('prompt', 'Prompt')}
       {item('terminal', 'Terminal')}
+      {item('programming', 'Python')}
     </div>
   )
 }
@@ -346,6 +438,7 @@ export function PcScreen({ project }: { project: Project }) {
         <div className="min-h-0 flex-1 overflow-y-auto">
           <IpConfigForm key={device.id} device={device} />
           <Ipv6Form key={`v6-${device.id}`} project={project} device={device} />
+          {device.kind === 'laptop' && <WifiForm key={`wifi-${device.id}`} project={project} device={device} />}
         </div>
       )}
       {tab === 'prompt' && (
@@ -358,6 +451,7 @@ export function PcScreen({ project }: { project: Project }) {
         />
       )}
       {tab === 'terminal' && <ConsoleTab project={project} hostId={device.id} />}
+      {tab === 'programming' && <ProgrammingTab key={device.id} project={project} device={device} />}
     </div>
   )
 }

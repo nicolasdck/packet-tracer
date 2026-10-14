@@ -1,6 +1,6 @@
 import type { IfName } from './types'
 
-export type IfMedia = 'ethernet' | 'serial' | 'virtual' | 'console'
+export type IfMedia = 'ethernet' | 'serial' | 'virtual' | 'console' | 'wireless'
 
 export interface IfType {
   full: string
@@ -18,6 +18,10 @@ export const IF_TYPES: readonly IfType[] = [
   // Management ports for the console cable: no data traffic, no interface configuration.
   { full: 'Console', short: 'Con', media: 'console', bandwidthKbps: 0 },
   { full: 'RS232', short: 'RS232', media: 'console', bandwidthKbps: 0 },
+  // Home Wi-Fi router: LAN switch ports, Internet (WAN) port, radio slots (one per client).
+  { full: 'Ethernet', short: 'Eth', media: 'ethernet', bandwidthKbps: 100_000 },
+  { full: 'Internet', short: 'Internet', media: 'ethernet', bandwidthKbps: 100_000 },
+  { full: 'Wireless', short: 'Wl', media: 'wireless', bandwidthKbps: 54_000 },
 ]
 
 /** Splits "GigabitEthernet0/0" into its type and number ("0/0"). */

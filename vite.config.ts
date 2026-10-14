@@ -30,11 +30,21 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // Source artwork, not used by the app.
-        globIgnores: ['**/logo.png'],
+        // Source artwork (not used by the app), and the Python runtime: 13 MB is
+        // too much to download at install, it is cached on first use instead.
+        globIgnores: ['**/logo.png', '**/pyodide/**'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/pyodide/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'pyodide', expiration: { maxEntries: 10 } },
+          },
+        ],
       },
     }),
   ],
+  // The Python worker loads modules dynamically.
+  worker: { format: 'es' },
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',

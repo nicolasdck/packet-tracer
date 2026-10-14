@@ -3,9 +3,13 @@
  * no classes, Maps, Sets, functions or Dates.
  */
 
-export type DeviceKind = 'switch-l2' | 'switch-l3' | 'router' | 'pc' | 'server'
-export type IosKind = Extract<DeviceKind, 'switch-l2' | 'switch-l3' | 'router'>
-export type HostKind = Extract<DeviceKind, 'pc' | 'server'>
+export type DeviceKind = 'switch-l2' | 'switch-l3' | 'router' | 'wireless-router' | 'pc' | 'server' | 'laptop'
+/**
+ * Devices simulated as IOS. The home Wi-Fi router has no CLI: its form settings
+ * generate an equivalent IOS configuration.
+ */
+export type IosKind = Extract<DeviceKind, 'switch-l2' | 'switch-l3' | 'router' | 'wireless-router'>
+export type HostKind = Extract<DeviceKind, 'pc' | 'server' | 'laptop'>
 
 /** Always the canonical IOS name: "GigabitEthernet0/0", "FastEthernet0/1", "Serial0/0/0". */
 export type IfName = string
@@ -25,6 +29,53 @@ export interface Project {
   seq: number
   devices: Record<string, Device>
   links: Record<string, Link>
+  /** Notepad of the project: configurations to copy, Python scripts to run. */
+  notes: Note[]
+  /** Set when the project was started from a lab: its instructions and checks. */
+  lab?: LabInfo
+}
+
+export interface LabInfo {
+  id: string
+  title: string
+  level: 'beginner' | 'intermediate' | 'advanced'
+  /** What the lab is about, shown before starting and in the task panel. */
+  summary: string
+  tasks: LabTask[]
+}
+
+export interface LabTask {
+  id: string
+  text: string
+  hint?: string
+  check: LabCheck
+}
+
+/**
+ * What a task verifies, evaluated on the live network. Devices are named by
+ * their canvas label ("R1", "PC0"), which a lab topology fixes.
+ */
+export type LabCheck =
+  | { kind: 'hostname'; device: string; value: string }
+  | { kind: 'interfaceIp'; device: string; iface: IfName; address: string; mask: string }
+  | { kind: 'interfaceUp'; device: string; iface: IfName }
+  | { kind: 'ping'; from: string; to: string }
+  | { kind: 'noPing'; from: string; to: string }
+  | { kind: 'vlan'; device: string; vlan: number; name?: string }
+  | { kind: 'accessVlan'; device: string; iface: IfName; vlan: number }
+  | { kind: 'trunk'; device: string; iface: IfName }
+  | { kind: 'route'; device: string; to: string; code: 'C' | 'S' | 'S*' | 'O' }
+  | { kind: 'ospfNeighbors'; device: string; count: number }
+  | { kind: 'enableSecret'; device: string }
+  | { kind: 'consoleLogin'; device: string }
+  | { kind: 'saved'; device: string }
+  | { kind: 'hostDhcp'; device: string }
+  | { kind: 'ssh'; from: string; to: string; username: string; password: string }
+
+export interface Note {
+  id: string
+  name: string
+  text: string
 }
 
 export interface LinkEnd {
@@ -64,6 +115,24 @@ export interface IosDevice extends DeviceBase {
   /** null = "startup-config is not present". */
   startup: IosConfig | null
   runtime: IosRuntime
+  /** Home Wi-Fi router only: settings of its web-style configuration page. */
+  home?: HomeRouterSettings
+}
+
+export interface HomeRouterSettings {
+  lan: { ip: string; mask: string }
+  /** DHCP server of the LAN: "start" is the last octet of the first address. */
+  dhcp: { enabled: boolean; start: number; max: number }
+  /** Internet (WAN) port: address obtained from the provider by DHCP, or static. */
+  wan: { mode: 'dhcp' | 'static'; ip?: string; mask?: string; gateway?: string; dns?: string }
+  wifi: WifiSettings
+}
+
+export interface WifiSettings {
+  ssid: string
+  security: 'open' | 'wpa2'
+  /** WPA2 personal key. */
+  passphrase?: string
 }
 
 export interface HostDevice extends DeviceBase {
@@ -98,6 +167,27 @@ export interface IosConfig {
   /** `ipv6 unicast-routing`: forwards IPv6 packets and advertises its prefixes (off by default). */
   ipv6Routing: boolean
   ipv6StaticRoutes: Ipv6StaticRoute[]
+  /** Local accounts (`username`), used by `login local`. */
+  users: LocalUser[]
+  /** `ip domain-name`, needed to generate RSA keys. */
+  domainName?: string
+  /** `ip ssh version 2`; without it the server accepts version 1.99 (both). */
+  sshVersion?: 2
+  /**
+   * Size of the RSA key pair (`crypto key generate rsa`). SSH runs once keys
+   * exist. Like the real private NVRAM it is not in the running-config and
+   * survives a reload.
+   */
+  rsaKeyBits?: number
+}
+
+export interface LocalUser {
+  name: string
+  privilege: number
+  /** `secret`: shown hashed (type 5). */
+  secret?: string
+  /** `password`: shown as typed, or type 7 with service password-encryption. */
+  password?: { value: string; encrypted: boolean }
 }
 
 /** `ipv6 route <prefix>/<length> {<nextHop> | <iface> [<nextHop>]} [<distance>]` */
@@ -187,6 +277,10 @@ export interface LineConfig {
   /** Plain text. `encrypted`: shown as type 7 (set by service password-encryption, never reverted). */
   password?: { value: string; encrypted: boolean }
   login: boolean
+  /** `login local`: users are checked against the local accounts (takes precedence over `login`). */
+  loginLocal?: boolean
+  /** `transport input`; absent = all protocols. */
+  transportInput?: 'all' | 'ssh' | 'telnet' | 'none'
 }
 
 export interface VlanConfig {
@@ -269,6 +363,8 @@ export interface IosRuntime {
   aclHits: Record<string, number>
   /** IPv6 neighbor cache (the IPv6 counterpart of the ARP table). */
   neighbors: NeighborEntry[]
+  /** Home Wi-Fi router: address of the Internet port obtained by DHCP. */
+  wanLease?: DhcpLease
 }
 
 export interface NeighborEntry {
@@ -284,6 +380,8 @@ export interface HostNetConfig {
   gateway?: string
   dns?: string
   ipv6?: HostIpv6Config
+  /** Laptops: Wi-Fi network to join (the wireless card is used once associated). */
+  wifi?: WifiSettings
 }
 
 /**

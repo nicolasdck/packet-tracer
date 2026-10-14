@@ -8,6 +8,7 @@ import { accessListNode, ipAccessListNode } from './acl'
 import { ipDhcpNode } from './dhcp'
 import { ipv6GlobalNode } from './ipv6'
 import { ipNatNode } from './nat'
+import { cryptoNode, ipDomainNodes, ipSshNode, usernameNode } from './ssh'
 import { ipRouteNode, routerNode } from './routing'
 import { interfaceNodes } from './shared'
 
@@ -108,6 +109,9 @@ export const configNodes: CmdNode[] = [
           for (const l of [cfg.lines.console, cfg.lines.vty]) {
             if (l.password) l.password.encrypted = true
           }
+          for (const u of cfg.users) {
+            if (u.password) u.password.encrypted = true
+          }
         },
         noRun: (ctx) => {
           ctx.device.running.servicePasswordEncryption = false
@@ -153,6 +157,8 @@ export const configNodes: CmdNode[] = [
     children: [
       ipAccessListNode,
       ipDhcpNode,
+      ...ipDomainNodes,
+      ipSshNode,
       ipNatNode,
       // Routing commands do not exist on a layer 2 switch.
       { ...ipRouteNode, when: canRoute },
@@ -169,6 +175,8 @@ export const configNodes: CmdNode[] = [
   }),
   ipv6GlobalNode,
   routerNode,
+  usernameNode,
+  cryptoNode,
   accessListNode,
   kw('exit', 'Exit from configure mode', { run: endConfig }),
 ]

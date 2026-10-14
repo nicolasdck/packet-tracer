@@ -5,6 +5,7 @@ import type { HostDevice, Project } from '../model/types'
 import { dhcpRelease, dhcpRequest } from '../sim/dhcp'
 import { formatIpv6, parseIpv6 } from '../model/ipv6'
 import { hostAddress } from '../sim/l3'
+import { hostNic } from '../wireless/association'
 import { ping, traceroute, type PingResult, type TraceHop } from '../sim/ping'
 import { hostV6, ping6, traceroute6 } from '../sim/v6'
 
@@ -58,6 +59,7 @@ function tracertOutput(target: string, hops: TraceHop[]): string[] {
 function ipconfigOutput(project: Project, host: HostDevice, all: boolean): string[] {
   const address = hostAddress(host)
   const v6 = hostV6(project, host)
+  const nic = hostNic(project, host)
   // Like Windows: the IPv6 gateway first, the IPv4 one below it.
   const v4Gateway = address.gateway ?? '0.0.0.0'
   const gateway =
@@ -66,12 +68,12 @@ function ipconfigOutput(project: Project, host: HostDevice, all: boolean): strin
       : [`   Default Gateway.................: ${formatIpv6(v6.gateway)}`, `${' '.repeat(37)}${v4Gateway}`]
   return [
     '',
-    'FastEthernet0 Connection:(default port)',
+    `${nic.name} Connection:(default port)`,
     '',
     '   Connection-specific DNS Suffix..: ',
     ...(all
       ? [
-          `   Physical Address................: ${host.ports[0]?.mac ?? ''}`,
+          `   Physical Address................: ${nic.mac}`,
           `   DHCP Enabled....................: ${host.net.mode === 'dhcp' ? 'Yes' : 'No'}`,
         ]
       : []),

@@ -55,8 +55,12 @@ export function reloadDevice(ctx: ExecCtx) {
   for (const cfg of Object.values(running.interfaces)) {
     if (cfg.ip) cfg.ip.method = 'NVRAM'
   }
-  // The VLAN database lives in vlan.dat, not in the startup-config.
-  running.vlans = snapshot(device.running).vlans
+  // The VLAN database (vlan.dat) and the RSA keys (private NVRAM) are not part of
+  // the startup-config: they survive the reload.
+  const before = snapshot(device.running)
+  running.vlans = before.vlans
+  if (before.rsaKeyBits) running.rsaKeyBits = before.rsaKeyBits
+  else delete running.rsaKeyBits
   device.running = running
   device.runtime = emptyIosRuntime()
   ctx.session.mode = 'user'

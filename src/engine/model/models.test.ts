@@ -27,10 +27,11 @@ describe('device models', () => {
     expect(findModel('switch-l2', '2960-48').id).toBe('2960-48')
   })
 
-  it('every model has unique port names and a console port', () => {
+  it('every model has unique port names, and a console port except the home router', () => {
     for (const model of MODELS) {
       expect(new Set(model.ports).size, model.id).toBe(model.ports.length)
-      expect(model.consolePort, model.id).toBe(model.kind === 'pc' || model.kind === 'server' ? 'RS232' : 'Console')
+      const expected = model.kind === 'wireless-router' ? undefined : model.kind === 'pc' || model.kind === 'server' || model.kind === 'laptop' ? 'RS232' : 'Console'
+      expect(model.consolePort, model.id).toBe(expected)
     }
   })
 

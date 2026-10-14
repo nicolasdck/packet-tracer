@@ -6,6 +6,9 @@ import {
   migrateProject,
   parseImport,
   prepareImport,
+  importLab,
+  startLab,
+  type LabDefinition,
   type Project,
 } from '../../engine'
 
@@ -81,4 +84,18 @@ export async function importProjects(text: string): Promise<number> {
   const prepared = prepareImport(incoming, existing, () => crypto.randomUUID())
   await db.projects.bulkAdd(prepared)
   return prepared.length
+}
+
+/** Creates and saves a project from a shipped lab. */
+export async function createLabProject(def: LabDefinition): Promise<Project> {
+  const project = startLab(def, crypto.randomUUID(), Date.now())
+  await db.projects.add(project)
+  return project
+}
+
+/** Creates and saves a project from a lab file. Throws LabFileError when the file is not a lab. */
+export async function importLabFile(text: string): Promise<Project> {
+  const project = importLab(text, crypto.randomUUID(), Date.now())
+  await db.projects.add(project)
+  return project
 }

@@ -1,3 +1,4 @@
+import { DEFAULT_HOME, homeRouterConfig } from '../wireless/home'
 import { findModel, isIosKind } from '../model/catalog'
 import { ifMedia } from '../model/ifname'
 import { deviceMac } from '../model/mac'
@@ -24,6 +25,7 @@ export function createProject(id: string, name: string, now: number): Project {
     seq: 0,
     devices: {},
     links: {},
+    notes: [],
   }
 }
 
@@ -45,18 +47,13 @@ function defaultInterface(kind: IosKind, port: IfName): IfConfig {
   return cfg
 }
 
-/** Factory configuration of an IOS device: one interface per data port of its model. */
-export function defaultIosConfig(kind: IosKind, modelId?: string): IosConfig {
-  const model = findModel(kind, modelId)
-  const interfaces: Record<IfName, IfConfig> = {}
-  for (const port of model.ports) interfaces[port] = defaultInterface(kind, port)
-  // Switches ship with the management SVI, shut down.
-  if (kind !== 'router') interfaces['Vlan1'] = { shutdown: true }
+/** Settings every IOS configuration starts from, without interfaces. */
+export function baseIosConfig(kind: IosKind): IosConfig {
   return {
-    hostname: model.defaultHostname ?? 'Router',
+    hostname: findModel(kind).defaultHostname ?? 'Router',
     servicePasswordEncryption: false,
     lines: { console: { login: false }, vty: { login: true } },
-    interfaces,
+    interfaces: {},
     vlans: kind === 'router' ? {} : { 1: { name: 'default' } },
     ipRouting: kind === 'router',
     staticRoutes: [],
@@ -65,7 +62,19 @@ export function defaultIosConfig(kind: IosKind, modelId?: string): IosConfig {
     nat: { statics: [], pools: [], dynamic: [] },
     ipv6Routing: false,
     ipv6StaticRoutes: [],
+    users: [],
   }
+}
+
+/** Factory configuration of an IOS device: one interface per data port of its model. */
+export function defaultIosConfig(kind: IosKind, modelId?: string): IosConfig {
+  const model = findModel(kind, modelId)
+  if (kind === 'wireless-router') return homeRouterConfig(model.id, DEFAULT_HOME)
+  const config = baseIosConfig(kind)
+  for (const port of model.ports) config.interfaces[port] = defaultInterface(kind, port)
+  // Switches ship with the management SVI, shut down.
+  if (kind !== 'router') config.interfaces['Vlan1'] = { shutdown: true }
+  return config
 }
 
 /** Learned tables of an IOS device, empty as after a boot. */
@@ -87,7 +96,7 @@ export function createDevice(
     model: model.id,
     label,
     position: { ...position },
-    ports: [...model.ports, model.consolePort].map((name, i) => ({ name, mac: deviceMac(seq, i + 1) })),
+    ports: [...model.ports, ...(model.consolePort ? [model.consolePort] : [])].map((name, i) => ({ name, mac: deviceMac(seq, i + 1) })),
   }
   if (isIosKind(kind)) {
     return {
@@ -96,6 +105,7 @@ export function createDevice(
       running: defaultIosConfig(kind, model.id),
       startup: null,
       runtime: emptyIosRuntime(),
+      ...(kind === 'wireless-router' ? { home: structuredClone(DEFAULT_HOME) } : {}),
     }
   }
   return { ...base, kind, net: { mode: 'static' }, runtime: { arp: [], neighbors: [] } }

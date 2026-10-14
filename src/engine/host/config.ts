@@ -2,7 +2,8 @@ import { produce } from 'immer'
 import { isHostDevice } from '../model/catalog'
 import { broadcastOf, maskToPrefix, networkOf, parseIpv4 } from '../model/ipv4'
 import { formatIpv6, parseIpv6, parseIpv6Prefix } from '../model/ipv6'
-import type { HostDevice, Project } from '../model/types'
+import type { HostDevice, Project, WifiSettings } from '../model/types'
+import { validateWifi } from '../wireless/home'
 import { dhcpRelease, dhcpRequest } from '../sim/dhcp'
 
 export interface HostNetInput {
@@ -124,5 +125,20 @@ export function setHostIpv6(project: Project, deviceId: string, input: HostIpv6I
       host.net.ipv6.prefix = parsed.length
     }
     if (gateway !== null) host.net.ipv6.gateway = formatIpv6(gateway)
+  })
+}
+
+/** Wi-Fi network a laptop joins (null: none). Throws if the settings are invalid. */
+export function setHostWifi(project: Project, deviceId: string, wifi: WifiSettings | null): Project {
+  const host = hostDevice(project, deviceId)
+  if (!host.ports.some((p) => p.name === 'Wireless0')) throw new Error('This device has no wireless card')
+  if (wifi) {
+    const first = Object.values(validateWifi(wifi))[0]
+    if (first) throw new Error(first)
+  }
+  return produce(project, (draft) => {
+    const h = hostDevice(draft, deviceId)
+    if (wifi) h.net.wifi = { ...wifi, ssid: wifi.ssid.trim() }
+    else delete h.net.wifi
   })
 }

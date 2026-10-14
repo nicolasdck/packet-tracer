@@ -10,6 +10,7 @@ const IOS_VERSION: Record<IosDevice['kind'], string> = {
   router: '15.1',
   'switch-l2': '15.0',
   'switch-l3': '12.2',
+  'wireless-router': '12.4',
 }
 
 const subNumber = (name: IfName) => Number(name.slice(name.indexOf('.') + 1))
@@ -78,7 +79,28 @@ function lineLines(header: string, line: LineConfig): string[] {
   if (line.password) {
     out.push(line.password.encrypted ? ` password 7 ${type7(line.password.value)}` : ` password ${line.password.value}`)
   }
-  if (line.login) out.push(' login')
+  if (line.loginLocal) out.push(' login local')
+  else if (line.login) out.push(' login')
+  if (line.transportInput) out.push(` transport input ${line.transportInput}`)
+  return out
+}
+
+/** Local accounts, domain name and SSH settings, as in the running-config. */
+function accessLines(config: IosConfig): string[] {
+  const out: string[] = []
+  for (const u of config.users) {
+    const privilege = u.privilege !== 1 ? ` privilege ${u.privilege}` : ''
+    const credential = u.secret !== undefined
+      ? `secret 5 ${type5(u.secret)}`
+      : u.password!.encrypted
+        ? `password 7 ${type7(u.password!.value)}`
+        : `password 0 ${u.password!.value}`
+    out.push(`username ${u.name}${privilege} ${credential}`)
+  }
+  if (out.length) out.push('!')
+  if (config.domainName) out.push(`ip domain-name ${config.domainName}`)
+  if (config.sshVersion) out.push(`ip ssh version ${config.sshVersion}`)
+  if (config.domainName || config.sshVersion) out.push('!')
   return out
 }
 
@@ -96,6 +118,7 @@ export function renderConfig(device: IosDevice, config: IosConfig): string[] {
     '!',
   ]
   if (config.enableSecret !== undefined) out.push(`enable secret 5 ${type5(config.enableSecret)}`, '!')
+  out.push(...accessLines(config))
   out.push('!', ...dhcpConfigLines(config), '!')
   if (device.kind === 'switch-l3' && config.ipRouting) out.push('ip routing', '!')
   if (config.ipv6Routing) out.push('ipv6 unicast-routing', '!')

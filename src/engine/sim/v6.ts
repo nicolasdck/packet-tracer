@@ -10,6 +10,7 @@ import {
   prefixOf,
 } from '../model/ipv6'
 import type { HostDevice, IfName, IosDevice, NeighborEntry, Project } from '../model/types'
+import { hostNic } from '../wireless/association'
 import { learnPath } from './forward'
 import { l2Reach } from './l2'
 import { macOf } from './l3'
@@ -52,7 +53,7 @@ export interface HostV6 {
  * `ipv6 unicast-routing`), which also becomes the default gateway.
  */
 export function hostV6(project: Project, host: HostDevice): HostV6 {
-  const port = host.ports[0]!
+  const port = hostNic(project, host)
   const linkLocal = linkLocalOf(port.mac)
   const cfg = host.net.ipv6
   if (!cfg) return { linkLocal, addresses: [], gateway: null, source: 'none' }
@@ -86,7 +87,7 @@ export function v6Interfaces(project: Project, deviceId: string): V6Interface[] 
   const isUp = (iface: IfName) => interfaceStatus(project, deviceId, iface).protocol === 'up'
 
   if (isHostDevice(device)) {
-    const port = device.ports[0]!
+    const port = hostNic(project, device)
     if (!isUp(port.name)) return []
     const info = hostV6(project, device)
     return [{ deviceId, iface: port.name, mac: port.mac, linkLocal: info.linkLocal, addresses: info.addresses }]

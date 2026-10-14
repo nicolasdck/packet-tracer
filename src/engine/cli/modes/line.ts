@@ -3,6 +3,7 @@ import { exitToConfig } from '../actions'
 import { line } from '../args'
 import { arg, kw } from '../dsl'
 import type { CmdNode, ExecCtx } from '../types'
+import { loginLocalNode, transportNode } from './ssh'
 
 function current(ctx: ExecCtx): LineConfig {
   return ctx.device.running.lines[ctx.session.lineContext ?? 'console']
@@ -26,11 +27,17 @@ export const lineModeNodes: CmdNode[] = [
   }),
   kw('login', 'Enable password checking', {
     run: (ctx) => {
-      current(ctx).login = true
+      const l = current(ctx)
+      l.login = true
+      delete l.loginLocal
     },
     noRun: (ctx) => {
-      current(ctx).login = false
+      const l = current(ctx)
+      l.login = false
+      delete l.loginLocal
     },
+    children: [loginLocalNode],
   }),
+  transportNode,
   kw('exit', 'Exit from line configuration mode', { run: exitToConfig }),
 ]

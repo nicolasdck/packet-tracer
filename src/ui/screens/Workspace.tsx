@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import {
   MAX_LABEL_LENGTH,
@@ -5,7 +6,7 @@ import {
   connect,
   deviceLinks,
   disconnect,
-  isIosDevice,
+  hasCli,
   removeDevice,
   renameDevice,
   shortIfName,
@@ -23,6 +24,9 @@ import { usePcStore } from '../store/pcStore'
 import { useProjectStore } from '../store/projectStore'
 import { useUiStore } from '../store/uiStore'
 import { DeviceCli } from './DeviceCli'
+import { LabPanel } from './LabPanel'
+import { NotesScreen } from './NotesScreen'
+import { HomeRouterScreen } from './HomeRouterScreen'
 import { PcScreen } from './PcScreen'
 
 const btn = 'rounded-lg px-3 py-2.5 text-sm font-medium'
@@ -107,6 +111,7 @@ function Sheets({ project }: { project: Project }) {
   const openCli = useCliStore((s) => s.open)
   const forgetCli = useCliStore((s) => s.forget)
   const openPc = usePcStore((s) => s.open)
+  const openHome = useUiStore((s) => s.openHome)
   const forgetPc = usePcStore((s) => s.forget)
   const menuItem = 'rounded-lg bg-slate-700 py-3 hover:bg-slate-600'
 
@@ -122,11 +127,12 @@ function Sheets({ project }: { project: Project }) {
               className={menuItem}
               onClick={() => {
                 close()
-                if (isIosDevice(device)) openCli(device.id)
+                if (hasCli(device)) openCli(device.id)
+                else if (device.kind === 'wireless-router') openHome(device.id)
                 else openPc(device.id)
               }}
             >
-              {isIosDevice(device) ? 'Open CLI' : 'Open'}
+              {hasCli(device) ? 'Open CLI' : 'Open'}
             </button>
             <button type="button" className={menuItem} onClick={() => openSheet('rename')}>Rename</button>
             <button type="button" className="rounded-lg bg-red-600/90 py-3 text-white hover:bg-red-500" onClick={() => openSheet('delete')}>
@@ -192,6 +198,8 @@ function Sheets({ project }: { project: Project }) {
 }
 
 export function Workspace({ project }: { project: Project }) {
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [tasksOpen, setTasksOpen] = useState(false)
   const close = useProjectStore((s) => s.close)
   const reset = useUiStore((s) => s.reset)
   const resetCli = useCliStore((s) => s.reset)
@@ -212,7 +220,23 @@ export function Workspace({ project }: { project: Project }) {
           <button type="button" onClick={back} className="rounded-lg px-3 py-3 text-slate-300 hover:bg-slate-800" aria-label="Back to projects">
             ←
           </button>
-          <h1 className="truncate font-semibold">{project.name}</h1>
+          <h1 className="min-w-0 flex-1 truncate font-semibold">{project.name}</h1>
+          {project.lab && (
+            <button
+              type="button"
+              onClick={() => setTasksOpen(true)}
+              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-600"
+            >
+              Tasks
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setNotesOpen(true)}
+            className="rounded-lg px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+          >
+            Notes{project.notes.length ? ` (${project.notes.length})` : ''}
+          </button>
         </header>
         <main className="relative flex-1">
           <Canvas project={project} />
@@ -225,6 +249,9 @@ export function Workspace({ project }: { project: Project }) {
       <Sheets project={project} />
       <DeviceCli project={project} />
       <PcScreen project={project} />
+      <HomeRouterScreen project={project} />
+      {notesOpen && <NotesScreen project={project} onClose={() => setNotesOpen(false)} />}
+      {tasksOpen && project.lab && <LabPanel project={project} onClose={() => setTasksOpen(false)} />}
     </ReactFlowProvider>
   )
 }

@@ -112,6 +112,9 @@ export function canConnect(project: Project, a: LinkEnd, b: LinkEnd): string | n
   if (!devB.ports.some((p) => p.name === b.port)) return `Unknown port ${b.port} on ${devB.label}`
   if (linkAt(project, a)) return `${devA.label} ${a.port} is already in use`
   if (linkAt(project, b)) return `${devB.label} ${b.port} is already in use`
+  if (ifMedia(a.port) === 'wireless' || ifMedia(b.port) === 'wireless') {
+    return 'Wireless connections are made automatically, from the Wi-Fi settings (SSID and key)'
+  }
   if (ifMedia(a.port) !== ifMedia(b.port)) return 'Incompatible ports'
   // A console cable goes from a PC's RS232 port to a device's Console port.
   if (ifMedia(a.port) === 'console' && a.port === b.port) {
@@ -128,8 +131,9 @@ export function isConsoleLink(link: Link): boolean {
 /** The router or switch a host's RS232 port is cabled to, if any. */
 export function consoleTarget(project: Project, hostId: string): string | null {
   const host = project.devices[hostId]
-  if (!host) return null
-  const link = linkAt(project, { deviceId: hostId, port: CATALOG[host.kind].consolePort })
+  const port = host && CATALOG[host.kind].consolePort
+  if (!port) return null
+  const link = linkAt(project, { deviceId: hostId, port })
   if (!link) return null
   return link.a.deviceId === hostId ? link.b.deviceId : link.a.deviceId
 }

@@ -2,10 +2,12 @@ import { produce } from 'immer'
 import { isHostDevice, isIosDevice } from '../model/catalog'
 import { broadcastOf, formatIpv4, maskToPrefix, networkOf, parseIpv4 } from '../model/ipv4'
 import type { DhcpLease, IosDevice, Project } from '../model/types'
+import { homeRouterConfig } from '../wireless/home'
 import { forward } from './forward'
 import { l2Reach } from './l2'
 import { l3Interfaces } from './l3'
 import { interfaceStatus } from './linkState'
+import { hostNic } from '../wireless/association'
 import { createRouting } from './rib'
 
 const SERVER_PORT = 67
@@ -70,30 +72,49 @@ function relayReaches(project: Project, relayId: string, relayIp: number, server
 export function dhcpRequest(project: Project, hostId: string): boolean {
   const host = project.devices[hostId]
   if (!host || !isHostDevice(host)) return false
-  const port = host.ports[0]!
-  if (interfaceStatus(project, hostId, port.name).protocol !== 'up') return false
+  const nic = hostNic(project, host)
+  const lease = obtainLease(project, hostId, nic.name, nic.mac)
+  if (!lease) return false
+  host.runtime.lease = lease
+  host.runtime.arp = []
+  return true
+}
 
-  for (const target of l2Reach(project, hostId, port.name)) {
+/** DHCP exchange for any client port (a host's card, a home router's Internet port). */
+function obtainLease(project: Project, clientId: string, port: string, mac: string): DhcpLease | null {
+  if (interfaceStatus(project, clientId, port).protocol !== 'up') return null
+  for (const target of l2Reach(project, clientId, port)) {
     const device = project.devices[target.deviceId]
     if (!device || !isIosDevice(device)) continue
     const l3 = l3Interfaces(project, device.id).find((i) => i.iface === target.iface)
     if (!l3) continue
 
-    let lease = allocate(device, l3.ip, port.mac)
+    let lease = allocate(device, l3.ip, mac)
     for (const helper of device.running.interfaces[target.iface]?.helperAddresses ?? []) {
       if (lease) break
       const serverIp = parseIpv4(helper)
       const serverId = serverIp === null ? null : relayReaches(project, device.id, l3.ip, serverIp)
       const server = serverId ? project.devices[serverId] : undefined
-      if (server && isIosDevice(server)) lease = allocate(server, l3.ip, port.mac)
+      if (server && isIosDevice(server)) lease = allocate(server, l3.ip, mac)
     }
-    if (lease) {
-      host.runtime.lease = lease
-      host.runtime.arp = []
-      return true
-    }
+    if (lease) return lease
   }
-  return false
+  return null
+}
+
+/**
+ * Internet port of a home router in DHCP mode: asks the provider for an
+ * address, then regenerates the router configuration with it.
+ */
+export function wanRequest(project: Project, routerId: string): boolean {
+  const router = project.devices[routerId]
+  if (!router || router.kind !== 'wireless-router' || !isIosDevice(router) || !router.home) return false
+  const mac = router.ports.find((p) => p.name === 'Internet')!.mac
+  const lease = obtainLease(project, routerId, 'Internet', mac)
+  if (!lease) return false
+  router.runtime.wanLease = lease
+  router.running = homeRouterConfig(router.model, router.home, lease)
+  return true
 }
 
 /** Gives the lease back to the server. Mutates the project. */
@@ -102,8 +123,9 @@ export function dhcpRelease(project: Project, hostId: string) {
   if (!host || !isHostDevice(host) || !host.runtime.lease) return
   const server = project.devices[host.runtime.lease.serverId]
   if (server && isIosDevice(server)) {
-    const mac = host.ports[0]!.mac
-    server.runtime.dhcpBindings = server.runtime.dhcpBindings.filter((b) => b.mac !== mac)
+    // Bindings are per MAC: release those of both network cards.
+    const macs = host.ports.map((p) => p.mac)
+    server.runtime.dhcpBindings = server.runtime.dhcpBindings.filter((b) => !macs.includes(b.mac))
   }
   delete host.runtime.lease
   host.runtime.arp = []
@@ -115,11 +137,15 @@ export function dhcpRelease(project: Project, hostId: string) {
  * network allows it. Pure: returns the same project when nothing changed.
  */
 export function dhcpSettle(project: Project): Project {
-  const waiting = Object.values(project.devices).filter(
-    (d) => isHostDevice(d) && d.net.mode === 'dhcp' && !d.runtime.lease,
+  const devices = Object.values(project.devices)
+  // Home routers first: once they have their Internet address, their LAN clients can follow.
+  const routers = devices.filter(
+    (d) => d.kind === 'wireless-router' && isIosDevice(d) && d.home?.wan.mode === 'dhcp' && !d.runtime.wanLease,
   )
-  if (!waiting.length) return project
+  const waiting = devices.filter((d) => isHostDevice(d) && d.net.mode === 'dhcp' && !d.runtime.lease)
+  if (!routers.length && !waiting.length) return project
   return produce(project, (draft) => {
+    for (const router of routers) wanRequest(draft, router.id)
     for (const host of waiting) dhcpRequest(draft, host.id)
   })
 }

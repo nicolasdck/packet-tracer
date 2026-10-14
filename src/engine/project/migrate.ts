@@ -12,6 +12,7 @@ function upgradeConfig(config: IosConfig, kind: IosKind) {
   if (config.nat === undefined) config.nat = { statics: [], pools: [], dynamic: [] }
   if (config.ipv6Routing === undefined) config.ipv6Routing = false
   if (config.ipv6StaticRoutes === undefined) config.ipv6StaticRoutes = []
+  if (config.users === undefined) config.users = []
 }
 
 function upgradeRuntime(runtime: IosRuntime) {
@@ -27,10 +28,11 @@ function upgradeRuntime(runtime: IosRuntime) {
  */
 export function migrateProject(project: Project): Project {
   return produce(project, (draft) => {
+    if (draft.notes === undefined) draft.notes = []
     for (const d of Object.values(draft.devices)) {
       // Console ports were added to the hardware later.
       const consolePort = CATALOG[d.kind].consolePort
-      if (!d.ports.some((p) => p.name === consolePort)) {
+      if (consolePort && !d.ports.some((p) => p.name === consolePort)) {
         d.ports.push({ name: consolePort, mac: deviceMac(Number(d.id.slice(1)) || 0, d.ports.length + 1) })
       }
       if (!isIosDevice(d)) {

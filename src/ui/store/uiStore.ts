@@ -18,6 +18,10 @@ interface UiState {
   selection: Selection
   linkDraft: LinkDraft | null
   sheet: Sheet
+  /** Home Wi-Fi router whose settings page is open. */
+  homeRouterId: string | null
+  openHome(deviceId: string): void
+  closeHome(): void
   select(selection: Selection): void
   openSheet(sheet: Sheet): void
   startLink(): void
@@ -32,6 +36,9 @@ export const useUiStore = create<UiState>()((set) => ({
   selection: null,
   linkDraft: null,
   sheet: null,
+  homeRouterId: null,
+  openHome: (deviceId) => set({ homeRouterId: deviceId }),
+  closeHome: () => set({ homeRouterId: null }),
   select: (selection) => set({ selection }),
   openSheet: (sheet) => set({ sheet }),
   startLink: () => set({ linkDraft: { a: null, pickingFor: null }, selection: null, sheet: null }),
@@ -44,5 +51,5 @@ export const useUiStore = create<UiState>()((set) => ({
   setLinkStart: (end) => set({ linkDraft: { a: end, pickingFor: null } }),
   closePortPicker: () =>
     set((s) => (s.linkDraft ? { linkDraft: { ...s.linkDraft, pickingFor: null } } : s)),
-  reset: () => set({ selection: null, linkDraft: null, sheet: null }),
+  reset: () => set({ selection: null, linkDraft: null, sheet: null, homeRouterId: null }),
 }))

@@ -55,7 +55,12 @@ const VERSIONS: Record<string, VersionInfo> = {
   },
 }
 
-const DEFAULT_MODEL: Record<IosDevice['kind'], string> = { router: '1941', 'switch-l2': '2960', 'switch-l3': '3560' }
+const DEFAULT_MODEL: Record<IosDevice['kind'], string> = {
+  router: '1941',
+  'switch-l2': '2960',
+  'switch-l3': '3560',
+  'wireless-router': '1941',
+}
 
 export function showVersion(device: IosDevice): string[] {
   const v = VERSIONS[device.model] ?? VERSIONS[DEFAULT_MODEL[device.kind]]!

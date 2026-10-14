@@ -14,7 +14,8 @@ export function PortPicker({ project, deviceId, from, onPick, onClose }: Props) 
   const device = project.devices[deviceId]
   if (!device) return null
 
-  const ports = listPorts(project, deviceId).map((p) => {
+  // Radio slots are not cabled: laptops associate from their Wi-Fi settings.
+  const ports = listPorts(project, deviceId).filter((p) => ifMedia(p.name) !== 'wireless').map((p) => {
     let reason: string | null = p.linkId ? 'in use' : null
     if (!reason && from) {
       reason = ifMedia(p.name) !== ifMedia(from.port)

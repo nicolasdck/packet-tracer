@@ -142,3 +142,29 @@ export function traceroute(
   }
   return hops
 }
+
+/** Client port of TCP connections opened by hosts. */
+const TCP_CLIENT_PORT = 49152
+/** A client retransmits its SYN; that also gets past the ARP resolutions on the way. */
+const SYN_ATTEMPTS = 3
+
+/**
+ * Opens a TCP connection from `deviceId` to `dst`:`port` (SYN there, SYN-ACK
+ * back), through routing, access lists and NAT. Returns the device that
+ * accepted it, or null. Mutates the project (ARP caches, NAT, ACL counters).
+ */
+export function tcpConnect(project: Project, deviceId: string, dst: number, port: number): string | null {
+  const routing = createRouting(project)
+  const hop = nextHopFor(project, deviceId, dst, routing)
+  if (!hop) return null
+  for (let attempt = 0; attempt < SYN_ATTEMPTS; attempt++) {
+    const syn = { src: hop.out.ip, dst, ttl: initialTtl(project, deviceId), proto: 'tcp' as const, id: TCP_CLIENT_PORT, dstPort: port }
+    const there = forward(project, deviceId, syn, routing)
+    if (there.kind !== 'delivered') continue
+    const seen = there.packet
+    const synAck = { src: seen.dst, dst: seen.src, ttl: initialTtl(project, there.deviceId), proto: 'tcp' as const, id: port, dstPort: seen.id }
+    const back = forward(project, there.deviceId, synAck, routing)
+    if (back.kind === 'delivered' && back.deviceId === deviceId) return there.deviceId
+  }
+  return null
+}

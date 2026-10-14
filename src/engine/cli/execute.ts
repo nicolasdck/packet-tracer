@@ -3,6 +3,7 @@ import { isIosDevice } from '../model/catalog'
 import { parseIpv6 } from '../model/ipv6'
 import { ping6 } from '../sim/v6'
 import { resolveIfName } from './args'
+import { answerModulus } from './modes/ssh'
 import { iosPingOutput } from './render/ping'
 import type { IosDevice, Project } from '../model/types'
 import { CONFIGURED_MSG, endConfig, reloadDevice, saveConfig } from './actions'
@@ -50,6 +51,8 @@ export function getPrompt(project: Project, session: CliSession): Prompt {
       return { text: 'Proceed with reload? [confirm]', masked: false }
     case 'ping6-interface':
       return { text: 'Output Interface: ', masked: false }
+    case 'rsa-modulus':
+      return { text: 'How many bits in the modulus [512]: ', masked: false }
     default:
       return { text: device.running.hostname + modeDef(session.mode).prompt, masked: false }
   }
@@ -151,6 +154,8 @@ const answerPending = (input: string): Handler => (ctx) => {
       if (answer === '' || /^y/i.test(answer)) reloadDevice(ctx)
       else ctx.out('')
       return
+    case 'rsa-modulus':
+      return answerModulus(ctx, answer)
     case 'ping6-interface': {
       session.pending = null
       const iface = resolveIfName({ project: ctx.project, device, session }, answer)

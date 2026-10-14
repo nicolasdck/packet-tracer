@@ -47,7 +47,7 @@ describe('ifname', () => {
   })
 
   it('rejects unknown names', () => {
-    expect(() => splitIfName('Ethernet0')).toThrow()
+    expect(() => splitIfName('TokenRing0')).toThrow()
   })
 })
 

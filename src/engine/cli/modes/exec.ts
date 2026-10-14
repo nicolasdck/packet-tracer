@@ -16,6 +16,7 @@ import { showArp, showInterfacesTrunk, showMacAddressTable, showVlanBrief } from
 import { showVersion } from '../render/version'
 import type { CmdNode, Handler, NodeCtx } from '../types'
 import { interfaceNodes } from './shared'
+import { showIpSsh } from './ssh'
 
 const isSwitch = (c: NodeCtx) => c.device.kind !== 'router'
 const arpNode = (help: string) => kw('arp', help, { run: (ctx) => ctx.out(...showArp(ctx.project, ctx.device)) })
@@ -83,6 +84,7 @@ function showNodes(privileged: boolean): CmdNode {
             }),
           ],
         }),
+        kw('ssh', 'Information on SSH', { run: (ctx) => ctx.out(...showIpSsh(ctx)) }),
         kw('route', 'IP routing table', {
           run: (ctx) => ctx.out(...showIpRoute(ctx.project, ctx.device)),
         }),

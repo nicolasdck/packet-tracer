@@ -28,6 +28,29 @@ export function DeviceIcon({ kind, className }: Props) {
           {kind === 'switch-l3' && <text x="38" y="23" fontSize="8" fontWeight="700" fill="#ede9fe" textAnchor="middle">L3</text>}
         </g>
       )}
+      {kind === 'wireless-router' && (
+        <g>
+          <rect x="6" y="26" width="36" height="12" rx="3" fill="#0284c7" />
+          <g stroke="#7dd3fc" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M14 26V12M34 26V12" />
+          </g>
+          <g stroke="#e0f2fe" strokeWidth="2" strokeLinecap="round" fill="none">
+            <path d="M18 9a9 9 0 0 1 12 0M21 13a4.5 4.5 0 0 1 6 0" />
+          </g>
+          <g fill="#bbf7d0">
+            <circle cx="14" cy="32" r="1.5" />
+            <circle cx="19" cy="32" r="1.5" />
+            <circle cx="24" cy="32" r="1.5" />
+          </g>
+        </g>
+      )}
+      {kind === 'laptop' && (
+        <g>
+          <rect x="10" y="10" width="28" height="19" rx="2" fill="#475569" />
+          <rect x="12.5" y="12.5" width="23" height="14" fill="#7dd3fc" />
+          <path d="M5 33h38l-3 4H8z" fill="#64748b" />
+        </g>
+      )}
       {kind === 'pc' && (
         <g>
           <rect x="7" y="8" width="34" height="24" rx="2" fill="#475569" />

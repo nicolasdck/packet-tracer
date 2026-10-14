@@ -27,6 +27,8 @@ export type Pending =
   | { kind: 'reload-confirm' }
   /** "Output Interface:" asked by a ping to a link-local IPv6 address. */
   | { kind: 'ping6-interface'; target: string }
+  /** "How many bits in the modulus [512]:" (crypto key generate rsa). */
+  | { kind: 'rsa-modulus' }
 
 /** A console session on one IOS device. Not persisted with the project. */
 export interface CliSession {

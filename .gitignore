@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Pyodide runtime, copied from node_modules (scripts/copy-pyodide.mjs)
+public/pyodide

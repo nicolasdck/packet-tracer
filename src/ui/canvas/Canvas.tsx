@@ -7,7 +7,7 @@ import {
   type XYPosition,
 } from '@xyflow/react'
 import { useMemo, useState } from 'react'
-import { interfaceStatus, isConsoleLink, isIosDevice, moveDevice, shortIfName, type Project } from '../../engine'
+import { hasCli, interfaceStatus, isConsoleLink, isWirelessLink, moveDevice, shortIfName, type Project } from '../../engine'
 import { useCliStore } from '../store/cliStore'
 import { usePcStore } from '../store/pcStore'
 import { useProjectStore } from '../store/projectStore'
@@ -44,6 +44,7 @@ function buildEdges(project: Project, selectedLinkId: string | null): LinkEdgeTy
         targetPort: shortIfName(l.b.port),
         offset,
         console: isConsoleLink(l),
+        wireless: isWirelessLink(l),
         sourceUp: isUp(l.a),
         targetUp: isUp(l.b),
         selected: l.id === selectedLinkId,
@@ -60,6 +61,7 @@ export function Canvas({ project }: { project: Project }) {
   const pickLinkDevice = useUiStore((s) => s.pickLinkDevice)
   const openCli = useCliStore((s) => s.open)
   const openPc = usePcStore((s) => s.open)
+  const openHome = useUiStore((s) => s.openHome)
 
   // React Flow owns measurements and in-flight drag positions; the project stores the rest.
   const [measured, setMeasured] = useState<Record<string, Dimensions>>({})
@@ -129,7 +131,8 @@ export function Canvas({ project }: { project: Project }) {
         select({ kind: 'device', id: node.id })
         const device = project.devices[node.id]
         if (!device) return
-        if (isIosDevice(device)) openCli(node.id)
+        if (hasCli(device)) openCli(node.id)
+        else if (device.kind === 'wireless-router') openHome(node.id)
         else openPc(node.id)
       }}
       onEdgeClick={(_, edge) => {

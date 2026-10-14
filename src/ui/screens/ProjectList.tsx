@@ -16,6 +16,7 @@ import {
   type ProjectSummary,
 } from '../persistence/db'
 import { saveFile } from '../persistence/saveFile'
+import { LabsScreen } from './LabsScreen'
 import { useProjectStore } from '../store/projectStore'
 
 const MAX_NAME_LENGTH = 60
@@ -36,6 +37,7 @@ function relativeTime(ts: number): string {
 type Action =
   | { kind: 'create' }
   | { kind: 'backup' }
+  | { kind: 'labs' }
   | { kind: 'menu'; project: ProjectSummary }
   | { kind: 'rename'; project: ProjectSummary }
   | { kind: 'delete'; project: ProjectSummary }
@@ -88,6 +90,13 @@ export function ProjectList() {
         <header className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-xl font-bold">Mini Packet Tracer</h1>
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAction({ kind: 'labs' })}
+              className="rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-medium text-white hover:bg-emerald-600"
+            >
+              Labs
+            </button>
             <button
               type="button"
               onClick={() => setAction({ kind: 'backup' })}
@@ -164,6 +173,8 @@ export function ProjectList() {
           }}
         />
       )}
+
+      {action?.kind === 'labs' && <LabsScreen onOpen={open} onClose={closeAction} />}
 
       {action?.kind === 'backup' && (
         <BottomSheet title="Backup" onClose={closeAction}>

@@ -1,7 +1,9 @@
 import { TestConsole } from '../cli/testing'
-import { setHostDhcp, setHostIpv6, setHostNet } from '../host/config'
+import { setHostDhcp, setHostIpv6, setHostNet, setHostWifi } from '../host/config'
+import { wirelessSettle } from '../wireless/association'
+import { setHomeRouter } from '../wireless/home'
 import { runHostCommand } from '../host/terminal'
-import type { DeviceKind, IfName, Project } from '../model/types'
+import type { DeviceKind, HomeRouterSettings, IfName, Project, WifiSettings } from '../model/types'
 import { createProject } from '../project/create'
 import { addDevice, connect } from '../project/topology'
 import { dhcpSettle } from './dhcp'
@@ -51,7 +53,15 @@ export function network() {
     },
     /** Lets DHCP clients without a lease retry, as the UI does after each change. */
     settle() {
-      p = dhcpSettle(p)
+      p = dhcpSettle(wirelessSettle(p))
+    },
+    /** Wi-Fi network of a laptop (null: none), then lets it associate and get an address. */
+    wifi(id: string, wifi: WifiSettings | null) {
+      p = dhcpSettle(wirelessSettle(setHostWifi(p, id, wifi)))
+    },
+    /** Settings page of a home router, then lets clients associate and get addresses. */
+    home(id: string, settings: HomeRouterSettings) {
+      p = dhcpSettle(wirelessSettle(setHomeRouter(p, id, settings)))
     },
     /** Runs a command in a PC's command prompt. */
     pc(id: string, line: string) {
